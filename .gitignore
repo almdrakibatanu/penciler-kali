@@ -1,0 +1,12 @@
+node_modules
+dist
+.env
+.env.local
+storage/data/*.db
+storage/data/*.db-journal
+storage/images
+storage/audio
+storage/video
+.next
+.cache
+*.log

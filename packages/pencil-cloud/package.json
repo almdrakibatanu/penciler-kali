@@ -1,0 +1,18 @@
+{
+  "name": "@pk/pencil-cloud",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@pk/db": "*",
+    "sharp": "^0.33.5"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3"
+  }
+}

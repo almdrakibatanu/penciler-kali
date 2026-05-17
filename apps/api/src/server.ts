@@ -1,0 +1,125 @@
+import './_root.js';
+import 'dotenv/config';
+import Fastify from 'fastify';
+import cors from '@fastify/cors';
+import fastifyStatic from '@fastify/static';
+import { join, resolve } from 'node:path';
+import { rawDb, getDb } from '@pk/db';
+import { initSchema } from '@pk/db/init';
+import { configure as configureCloud, getAsset, renderTransform, verifyTransform } from '@pk/pencil-cloud';
+import { queueStats } from '@pk/pencil-queue';
+import { startScheduler } from './scheduler.js';
+
+// ----------------------------------------------------------------------------
+// Backend API server.
+//   * REST endpoints for the Next.js frontend (articles, categories, search)
+//   * /cdn/* — Cloudinary-style image transform endpoint (signed)
+//   * /admin/* — pipeline triggers + queue/post stats
+//   * starts the cron scheduler when API_AUTO_SCHEDULER!=false
+// ----------------------------------------------------------------------------
+
+initSchema();
+configureCloud();
+
+// maxParamLength: signed-URL tokens can encode base64 titles ~300+ chars.
+const app = Fastify({ logger: { level: 'info' }, routerOptions: { maxParamLength: 4096 } } as any);
+await app.register(cors, { origin: true });
+await app.register(fastifyStatic, {
+  root: resolve(process.cwd(), 'storage'),
+  prefix: '/storage/',
+});
+
+// ----- public routes -------------------------------------------------------
+
+app.get('/api/health', async () => ({ ok: true, time: Date.now() }));
+
+app.get('/api/categories', async () => ([
+  { slug: 'bangladesh', name: 'বাংলাদেশ' },
+  { slug: 'bidesh',     name: 'বিদেশ' },
+  { slug: 'kheladhula', name: 'খেলাধুলা' },
+  { slug: 'binodon',    name: 'বিনোদন' },
+  { slug: 'islamic',    name: 'ইসলামিক' },
+]));
+
+app.get('/api/articles', async (req) => {
+  const q = req.query as { category?: string; limit?: string; offset?: string; q?: string };
+  const limit = Math.min(60, Math.max(1, Number(q.limit ?? 20)));
+  const offset = Math.max(0, Number(q.offset ?? 0));
+  let sql = `SELECT id, slug, title, summary, category, tags, hero_image_url, published_at, created_at
+             FROM articles WHERE status='published'`;
+  const params: unknown[] = [];
+  if (q.category) { sql += ` AND category=?`; params.push(q.category); }
+  if (q.q) { sql += ` AND (title LIKE ? OR summary LIKE ?)`; params.push(`%${q.q}%`, `%${q.q}%`); }
+  sql += ` ORDER BY COALESCE(published_at, created_at) DESC LIMIT ? OFFSET ?`;
+  params.push(limit, offset);
+  const rows = rawDb().prepare(sql).all(...params);
+  return { items: rows, limit, offset };
+});
+
+app.get('/api/articles/:slug', async (req, reply) => {
+  const { slug } = req.params as { slug: string };
+  const row = rawDb().prepare(`SELECT * FROM articles WHERE slug=?`).get(slug);
+  if (!row) { reply.code(404); return { error: 'not_found' }; }
+  rawDb().prepare(`UPDATE articles SET views=views+1 WHERE slug=?`).run(slug);
+  return row;
+});
+
+app.get('/api/videos', async () => {
+  const rows = rawDb().prepare(`SELECT id, title, category, thumbnail_url, youtube_id, created_at FROM videos WHERE status IN ('ready','uploaded') ORDER BY created_at DESC LIMIT 50`).all();
+  return { items: rows };
+});
+
+// ----- pencil-cloud CDN ---------------------------------------------------
+
+app.get('/cdn/raw/:filename', async (req, reply) => {
+  const { filename } = req.params as { filename: string };
+  const id = filename.split('.')[0]!;
+  const a = getAsset(id);
+  if (!a) { reply.code(404); return { error: 'not_found' }; }
+  // path is stored with platform separators — normalize for sendFile (which wants forward slashes relative to root).
+  return (reply as any).sendFile(a.path.replace(/\\/g, '/'));
+});
+
+app.get('/cdn/t/:assetId/:token/:sig', async (req, reply) => {
+  const { assetId, token, sig } = req.params as { assetId: string; token: string; sig: string };
+  const spec = verifyTransform(assetId, token, sig);
+  if (!spec) { reply.code(403); return { error: 'bad_signature' }; }
+  try {
+    const { buffer, mime } = await renderTransform(assetId, spec);
+    reply.header('Content-Type', mime);
+    reply.header('Cache-Control', 'public, max-age=31536000, immutable');
+    return reply.send(buffer);
+  } catch (e) {
+    reply.code(500); return { error: (e as Error).message };
+  }
+});
+
+// ----- admin --------------------------------------------------------------
+
+app.get('/admin/stats', async () => {
+  getDb();
+  const counts = {
+    raw_items: (rawDb().prepare(`SELECT COUNT(*) as n FROM raw_items`).get() as any).n as number,
+    articles:  (rawDb().prepare(`SELECT COUNT(*) as n FROM articles`).get() as any).n as number,
+    published: (rawDb().prepare(`SELECT COUNT(*) as n FROM articles WHERE status='published'`).get() as any).n as number,
+    videos:    (rawDb().prepare(`SELECT COUNT(*) as n FROM videos`).get() as any).n as number,
+    posts:     (rawDb().prepare(`SELECT COUNT(*) as n FROM posts`).get() as any).n as number,
+  };
+  return { counts, queues: queueStats() };
+});
+
+app.post('/admin/articles/:id/publish', async (req) => {
+  const { id } = req.params as { id: string };
+  rawDb().prepare(`UPDATE articles SET status='published', published_at=COALESCE(published_at, ?) WHERE id=?`).run(Date.now(), Number(id));
+  return { ok: true };
+});
+
+// ----- boot ---------------------------------------------------------------
+
+const port = Number(process.env.API_PORT ?? 4000);
+await app.listen({ port, host: '0.0.0.0' });
+app.log.info(`PencilerKali API ready on :${port}`);
+
+if ((process.env.API_AUTO_SCHEDULER ?? 'true') === 'true') {
+  startScheduler(app.log);
+}

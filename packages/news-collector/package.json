@@ -1,0 +1,20 @@
+{
+  "name": "@pk/news-collector",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@pk/db": "*",
+    "cheerio": "^1.0.0",
+    "drizzle-orm": "^0.36.4",
+    "rss-parser": "^3.13.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3"
+  }
+}

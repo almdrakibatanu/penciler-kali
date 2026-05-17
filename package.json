@@ -1,0 +1,34 @@
+{
+  "name": "pencilerkali",
+  "version": "0.1.0",
+  "private": true,
+  "description": "PencilerKali.com — Bangladeshi AI-powered news + video automation platform",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build:packages && npm run build -w apps/api",
+    "build:packages": "npm run build -w packages/db && npm run build -w packages/pencil-queue && npm run build -w packages/pencil-cloud && npm run build -w packages/pencil-voice && npm run build -w packages/pencil-video && npm run build -w packages/news-collector && npm run build -w packages/ai-rewriter && npm run build -w packages/publisher-fb && npm run build -w packages/publisher-yt",
+    "build:web": "npm run build -w apps/web",
+    "dev:api": "npm run dev --workspace apps/api",
+    "dev:web": "npm run dev --workspace apps/web",
+    "db:init": "node packages/db/dist/init.js",
+    "seed": "node apps/api/dist/seed.js",
+    "demo": "node apps/api/dist/demo.js",
+    "collect": "node apps/api/dist/cli.js collect",
+    "rewrite": "node apps/api/dist/cli.js rewrite",
+    "image": "node apps/api/dist/cli.js image",
+    "video": "node apps/api/dist/cli.js video",
+    "publish:fb": "node apps/api/dist/cli.js publish-fb",
+    "publish:yt": "node apps/api/dist/cli.js publish-yt"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
+  }
+}
