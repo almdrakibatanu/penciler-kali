@@ -4,6 +4,8 @@ dist
 .env.local
 storage/data/*.db
 storage/data/*.db-journal
+storage/data/*.db-shm
+storage/data/*.db-wal
 storage/images
 storage/audio
 storage/video
