@@ -1,4 +1,3 @@
-import Anthropic from '@anthropic-ai/sdk';
 import { rawDb, getDb } from '@pk/db';
 import { randomUUID } from 'node:crypto';
 import { minhashOf, encodeMinhash, decodeMinhash, jaccard } from './minhash.js';
@@ -109,12 +108,13 @@ export async function rewriteCluster(input: RewriteInput): Promise<RewriteOutput
   ).all(input.clusterId) as Array<{ title: string; url: string; summary: string | null; image_url: string | null; published_at: number | null }>;
   if (items.length === 0) throw new Error(`cluster ${input.clusterId} is empty`);
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  const model = process.env.ANTHROPIC_MODEL ?? 'claude-sonnet-4-6';
+  // Gemini is the only AI provider. No key → offline stub (dev/demo mode).
+  const geminiKey = process.env.GEMINI_API_KEY;
+  const geminiModel = process.env.GEMINI_MODEL ?? 'gemini-2.5-flash';
 
   let parsed: AIResult;
-  if (apiKey) {
-    parsed = await callClaude(apiKey, model, items);
+  if (geminiKey) {
+    parsed = await callGemini(geminiKey, geminiModel, items);
   } else {
     parsed = stubRewrite(items);
   }
@@ -125,32 +125,82 @@ export async function rewriteCluster(input: RewriteInput): Promise<RewriteOutput
   return { ...parsed, slug, sourceUrls, imageUrl };
 }
 
-async function callClaude(apiKey: string, model: string, items: Array<{ title: string; url: string; summary: string | null; published_at: number | null }>): Promise<AIResult> {
-  const client = new Anthropic({ apiKey });
-  const sources = items.slice(0, 10).map((i, n) => `[${n + 1}] ${i.title}\nURL: ${i.url}\nSUMMARY: ${(i.summary ?? '').slice(0, 400)}`).join('\n\n');
-  // Cache the heavy system prompt — `cache_control` lives on the block.
-  const resp = await client.messages.create({
-    model,
-    max_tokens: 2200,
-    system: [
-      { type: 'text', text: POLICY_BN, cache_control: { type: 'ephemeral' } } as any,
-      { type: 'text', text: `আউটপুট আবশ্যিকভাবে নিচের JSON schema-এ হবে — কোনো ব্যাখ্যা বা মন্তব্য না, শুধুমাত্র valid JSON:\n{\n  "title": "...","summary": "...","body": "[৫–৮ paragraph বাংলা প্রবন্ধ]","category": "bangladesh|bidesh|kheladhula|binodon|islamic|politics-review","tags": ["..."],"seoTitle":"...","seoDescription":"...","fbCaption":"...","thumbnailText":"...","status":"draft|flagged"\n}` } as any,
-    ] as any,
-    messages: [
-      { role: 'user', content: `নিচের ${items.length}টি সূত্র থেকে একটি unique বাংলা সংবাদ লেখো:\n\n${sources}` },
-    ],
-  });
-  const text = resp.content.map((b) => (b.type === 'text' ? b.text : '')).join('');
+// Shared between providers — the strict JSON output contract.
+const SCHEMA_INSTRUCTION = `আউটপুট আবশ্যিকভাবে নিচের JSON schema-এ হবে — কোনো ব্যাখ্যা বা মন্তব্য না, শুধুমাত্র valid JSON:\n{\n  "title": "...","summary": "...","body": "[৫–৮ paragraph বাংলা প্রবন্ধ]","category": "bangladesh|bidesh|kheladhula|binodon|islamic|politics-review","tags": ["..."],"seoTitle":"...","seoDescription":"...","fbCaption":"...","thumbnailText":"...","status":"draft|flagged"\n}`;
+
+function buildSources(items: Array<{ title: string; url: string; summary: string | null }>): string {
+  return items.slice(0, 10).map((i, n) => `[${n + 1}] ${i.title}\nURL: ${i.url}\nSUMMARY: ${(i.summary ?? '').slice(0, 400)}`).join('\n\n');
+}
+
+function buildUserPrompt(items: Array<unknown>, sources: string): string {
+  return `নিচের ${items.length}টি সূত্র থেকে একটি unique বাংলা সংবাদ লেখো:\n\n${sources}`;
+}
+
+// ----- Gemini (preferred) — REST API, no SDK dependency (Node 20 fetch) -------
+// Uses responseMimeType=application/json so the model returns clean JSON.
+async function callGemini(apiKey: string, model: string, items: Array<{ title: string; url: string; summary: string | null }>): Promise<AIResult> {
+  const sources = buildSources(items);
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+  const body = {
+    systemInstruction: { parts: [{ text: `${POLICY_BN}\n\n${SCHEMA_INSTRUCTION}` }] },
+    contents: [{ role: 'user', parts: [{ text: buildUserPrompt(items, sources) }] }],
+    // thinkingBudget: 0 disables 2.5-flash's "thinking" pass — faster, fewer tokens.
+    generationConfig: { temperature: 0.7, maxOutputTokens: 2200, responseMimeType: 'application/json', thinkingConfig: { thinkingBudget: 0 } },
+  };
+  // Retry transient 503 ("model overloaded") a couple of times with backoff.
+  // 429 (quota) is NOT retried — it bubbles up so the caller skips & waits for
+  // the next cron tick rather than hammering an exhausted free-tier limit.
+  let resp: Response | undefined;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
+      body: JSON.stringify(body),
+    });
+    if (resp.ok || resp.status !== 503) break;
+    if (attempt < 2) await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+  }
+  if (!resp || !resp.ok) {
+    const errText = resp ? await resp.text().catch(() => '') : '';
+    throw new Error(`Gemini API ${resp?.status ?? 'no-response'}: ${errText.slice(0, 300)}`);
+  }
+  const data = await resp.json() as any;
+  const text: string = (data?.candidates?.[0]?.content?.parts ?? []).map((p: any) => p?.text ?? '').join('');
+  if (!text.trim()) throw new Error('Gemini returned empty response: ' + JSON.stringify(data).slice(0, 300));
   return parseJsonStrict(text);
 }
 
 function parseJsonStrict(s: string): AIResult {
-  // try direct
+  // 1) direct parse
   try { return validate(JSON.parse(s)); } catch { /* fallthrough */ }
-  // strip code fences
-  const m = /\{[\s\S]*\}/.exec(s);
-  if (m) try { return validate(JSON.parse(m[0])); } catch { /* fallthrough */ }
-  throw new Error('AI response was not valid JSON');
+  // 2) strip markdown code fences (```json … ```)
+  const fenced = /```(?:json)?\s*([\s\S]*?)```/i.exec(s);
+  if (fenced && fenced[1]) {
+    try { return validate(JSON.parse(fenced[1].trim())); } catch { /* fallthrough */ }
+  }
+  // 3) find a balanced top-level JSON object by brace counting (handles
+  //    embedded { } inside string values too, by tracking string state)
+  const start = s.indexOf('{');
+  if (start !== -1) {
+    let depth = 0, inStr = false, escape = false;
+    for (let i = start; i < s.length; i++) {
+      const ch = s[i]!;
+      if (escape) { escape = false; continue; }
+      if (ch === '\\') { escape = true; continue; }
+      if (ch === '"') { inStr = !inStr; continue; }
+      if (inStr) continue;
+      if (ch === '{') depth++;
+      else if (ch === '}') {
+        depth--;
+        if (depth === 0) {
+          const candidate = s.slice(start, i + 1);
+          try { return validate(JSON.parse(candidate)); } catch { /* fallthrough */ }
+          break;
+        }
+      }
+    }
+  }
+  throw new Error('AI response was not valid JSON: ' + s.slice(0, 200));
 }
 
 function validate(o: any): AIResult {

@@ -123,6 +123,33 @@ export function initSchema(): void {
     for (const stmt of DDL) sqlite.exec(stmt);
   });
   tx();
+  ensureSourceUrlUnique(sqlite);
+}
+
+// One-time migration: the sources table originally had no UNIQUE on url, so
+// re-running the seeder created duplicate source rows (and double-fetched every
+// feed). De-duplicate existing rows — repointing raw_items to the canonical
+// (lowest-id) source per url — then add a UNIQUE index so INSERT OR IGNORE in
+// the seeder actually dedupes from now on. Guarded so it runs only once.
+function ensureSourceUrlUnique(sqlite: ReturnType<typeof rawDb>): void {
+  const exists = sqlite.prepare(
+    `SELECT 1 FROM sqlite_master WHERE type='index' AND name='sources_url_unique'`
+  ).get();
+  if (exists) return;
+  const migrate = sqlite.transaction(() => {
+    // Repoint raw_items to the surviving (min-id) source sharing the same url.
+    sqlite.exec(`
+      UPDATE raw_items SET source_id = (
+        SELECT MIN(s2.id) FROM sources s2
+        WHERE s2.url = (SELECT s1.url FROM sources s1 WHERE s1.id = raw_items.source_id)
+      )
+      WHERE source_id IS NOT NULL
+    `);
+    // Drop duplicate source rows, keeping the lowest id per url.
+    sqlite.exec(`DELETE FROM sources WHERE id NOT IN (SELECT MIN(id) FROM sources GROUP BY url)`);
+    sqlite.exec(`CREATE UNIQUE INDEX sources_url_unique ON sources(url)`);
+  });
+  migrate();
 }
 
 if (import.meta.url === `file://${process.argv[1]?.replace(/\\/g, '/')}`) {

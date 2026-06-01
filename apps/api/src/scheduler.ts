@@ -32,8 +32,8 @@ export function startScheduler(log: Logger): void {
   const safe = (name: string, fn: () => Promise<unknown>) => cron.schedule(c[name as keyof typeof c], once(fn as any, name, log));
 
   safe('collect', () => stageCollect());
-  safe('rewrite', () => stageRewrite(5));
-  safe('image',   () => stageImage(10));
+  safe('rewrite', () => stageRewrite());
+  safe('image',   () => stageImage(Number(process.env.IMAGE_MAX ?? 40)));
   safe('video',   () => stageVideo(2));
   safe('fb',      () => stagePublishFb(5));
   safe('yt',      () => stagePublishYt(2));

@@ -45,7 +45,7 @@ app.get('/api/articles', async (req) => {
   const q = req.query as { category?: string; limit?: string; offset?: string; q?: string };
   const limit = Math.min(60, Math.max(1, Number(q.limit ?? 20)));
   const offset = Math.max(0, Number(q.offset ?? 0));
-  let sql = `SELECT id, slug, title, summary, category, tags, hero_image_url, published_at, created_at
+  let sql = `SELECT id, slug, title, summary, category, tags, hero_image_url, thumbnail_url, published_at, created_at
              FROM articles WHERE status='published'`;
   const params: unknown[] = [];
   if (q.category) { sql += ` AND category=?`; params.push(q.category); }

@@ -20,6 +20,9 @@ const rss = new Parser({
   headers: { 'User-Agent': 'PencilerKaliBot/1.0 (+https://pencilerkali.com)' },
 });
 
+// Sync the DB sources table with DEFAULT_SOURCES: insert new feeds, refresh
+// metadata, and disable any feed no longer in the registry (dead/removed).
+// Relies on the UNIQUE index on sources.url (added by initSchema) for dedupe.
 export function seedSources(): number {
   getDb();
   const db = rawDb();
@@ -27,12 +30,22 @@ export function seedSources(): number {
     INSERT OR IGNORE INTO sources (name, kind, url, category, lang, enabled, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?)
   `);
+  const upd = db.prepare(`UPDATE sources SET name=?, kind=?, category=?, lang=?, enabled=? WHERE url=?`);
   const now = Date.now();
   let count = 0;
-  for (const s of DEFAULT_SOURCES) {
-    const r = ins.run(s.name, s.kind, s.url, s.category, s.lang, s.enabled === false ? 0 : 1, now);
-    if (r.changes > 0) count++;
-  }
+  const sync = db.transaction(() => {
+    for (const s of DEFAULT_SOURCES) {
+      const enabled = s.enabled === false ? 0 : 1;
+      const r = ins.run(s.name, s.kind, s.url, s.category, s.lang, enabled, now);
+      if (r.changes > 0) count++;
+      upd.run(s.name, s.kind, s.category, s.lang, enabled, s.url); // keep metadata fresh
+    }
+    // Disable any source whose url is no longer in the registry (dead feeds).
+    const urls = DEFAULT_SOURCES.map((s) => s.url);
+    const placeholders = urls.map(() => '?').join(',');
+    db.prepare(`UPDATE sources SET enabled=0 WHERE url NOT IN (${placeholders})`).run(...urls);
+  });
+  sync();
   return count;
 }
 

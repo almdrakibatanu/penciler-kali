@@ -16,23 +16,58 @@ export async function stageCollect(): Promise<{ inserted: number; fetched: numbe
   return { inserted: s.inserted, fetched: s.fetched, errors: s.errors.length };
 }
 
-export async function stageRewrite(maxClusters = 5): Promise<{ articles: number; flagged: number }> {
-  const clusters = clusterUnprocessed(0.55, 200).slice(0, maxClusters);
-  let articles = 0, flagged = 0;
-  for (const c of clusters) {
+export async function stageRewrite(
+  maxClusters = Number(process.env.REWRITE_MAX_CLUSTERS ?? 40),
+): Promise<{ articles: number; flagged: number; skipped: number; pending: number; cappedAt?: number }> {
+  getDb();
+  const db = rawDb();
+
+  // 1) Fold any freshly-collected 'new' items into clusters (new -> clustered).
+  clusterUnprocessed(0.55, 200);
+
+  // 2) Daily safety cap — never exceed the AI provider's free-tier daily request
+  //    limit. Counts articles created since local midnight.
+  const dailyCap = Number(process.env.REWRITE_DAILY_CAP ?? 1200);
+  const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
+  const todayCount = (db.prepare(`SELECT COUNT(*) n FROM articles WHERE created_at >= ?`)
+    .get(startOfDay.getTime()) as { n: number }).n;
+  const room = Math.max(0, Math.min(maxClusters, dailyCap - todayCount));
+
+  // How many clusters are still waiting to be rewritten (for visibility).
+  const pendingTotal = (db.prepare(
+    `SELECT COUNT(DISTINCT cluster_id) n FROM raw_items WHERE status='clustered' AND cluster_id IS NOT NULL`
+  ).get() as { n: number }).n;
+
+  if (room === 0) return { articles: 0, flagged: 0, skipped: 0, pending: pendingTotal, cappedAt: dailyCap };
+
+  // 3) Drain the backlog: pick clusters that are still 'clustered' (not yet
+  //    rewritten), newest first. Fixes the old bug where freshly-clustered
+  //    clusters beyond the per-tick limit were orphaned and never rewritten.
+  const pending = db.prepare(
+    `SELECT cluster_id FROM raw_items
+     WHERE status='clustered' AND cluster_id IS NOT NULL
+     GROUP BY cluster_id
+     ORDER BY MAX(id) DESC
+     LIMIT ?`
+  ).all(room) as Array<{ cluster_id: string }>;
+
+  let articles = 0, flagged = 0, skipped = 0;
+  for (const { cluster_id } of pending) {
     try {
-      const out: RewriteOutput = await rewriteCluster({ clusterId: c.clusterId });
-      const id = persistArticle(out, c.clusterId);
+      const out: RewriteOutput = await rewriteCluster({ clusterId: cluster_id });
+      const id = persistArticle(out, cluster_id);
       articles++; if (out.status === 'flagged') flagged++;
-      // also auto-publish drafts (not flagged) so the homepage gets fresh data
+      // auto-publish clean drafts (not flagged) so the homepage gets fresh data
       if (out.status === 'draft') {
-        rawDb().prepare(`UPDATE articles SET status='published', published_at=? WHERE id=?`).run(Date.now(), id);
+        db.prepare(`UPDATE articles SET status='published', published_at=? WHERE id=?`).run(Date.now(), id);
       }
     } catch (e) {
-      console.warn('[rewrite] cluster failed:', (e as Error).message);
+      // On failure (e.g. API 429) the cluster stays 'clustered' and retries next tick.
+      skipped++;
+      console.warn('[rewrite] cluster failed:', cluster_id, (e as Error).message);
     }
   }
-  return { articles, flagged };
+  return { articles, flagged, skipped, pending: pendingTotal };
 }
 
 export async function stageImage(maxArticles = 10): Promise<{ thumbed: number }> {

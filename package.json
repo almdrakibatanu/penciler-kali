@@ -11,6 +11,7 @@
     "build": "npm run build:packages && npm run build -w apps/api",
     "build:packages": "npm run build -w packages/db && npm run build -w packages/pencil-queue && npm run build -w packages/pencil-cloud && npm run build -w packages/pencil-voice && npm run build -w packages/pencil-video && npm run build -w packages/news-collector && npm run build -w packages/ai-rewriter && npm run build -w packages/publisher-fb && npm run build -w packages/publisher-yt",
     "build:web": "npm run build -w apps/web",
+    "build:all": "npm run build && npm run build:web",
     "dev:api": "npm run dev --workspace apps/api",
     "dev:web": "npm run dev --workspace apps/web",
     "db:init": "node packages/db/dist/init.js",

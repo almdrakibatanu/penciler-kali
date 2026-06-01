@@ -25,10 +25,21 @@ export async function generateMetadata({ params }: { params: { slug: string } })
   };
 }
 
+function parseSources(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  try {
+    const v = JSON.parse(raw);
+    return Array.isArray(v) ? v.filter((u): u is string => typeof u === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
 export default async function ArticlePage({ params }: { params: { slug: string } }) {
   const a = await getArticle(params.slug);
   if (!a) notFound();
   const ts = a.published_at ?? a.created_at;
+  const sources = parseSources(a.source_urls);
   return (
     <article className="max-w-3xl mx-auto px-4 py-8">
       <Link href={`/c/${a.category}`} className="text-sm text-brand-600 font-semibold">{CAT_LABEL[a.category] ?? a.category}</Link>
@@ -41,11 +52,11 @@ export default async function ArticlePage({ params }: { params: { slug: string }
       <div className="prose-bn text-[1.05rem]">
         {a.body.split(/\n\n+/).map((p, i) => <p key={i}>{p}</p>)}
       </div>
-      {a.source_urls && (
+      {sources.length > 0 && (
         <details className="mt-8 border-t border-slate-200 pt-4">
           <summary className="cursor-pointer text-sm font-semibold text-ink-700">তথ্যসূত্র</summary>
           <ul className="mt-2 text-sm space-y-1">
-            {JSON.parse(a.source_urls).map((u: string, i: number) => (
+            {sources.map((u, i) => (
               <li key={i}><a href={u} target="_blank" rel="noopener" className="text-brand-600 hover:underline break-all">{u}</a></li>
             ))}
           </ul>
