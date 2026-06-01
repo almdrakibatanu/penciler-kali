@@ -18,7 +18,7 @@ export async function stageCollect(): Promise<{ inserted: number; fetched: numbe
 
 export async function stageRewrite(
   maxClusters = Number(process.env.REWRITE_MAX_CLUSTERS ?? 40),
-): Promise<{ articles: number; flagged: number; skipped: number; pending: number; cappedAt?: number }> {
+): Promise<{ articles: number; flagged: number; skipped: number; pending: number; cappedAt?: number; quotaHit?: boolean }> {
   getDb();
   const db = rawDb();
 
@@ -51,7 +51,10 @@ export async function stageRewrite(
      LIMIT ?`
   ).all(room) as Array<{ cluster_id: string }>;
 
-  let articles = 0, flagged = 0, skipped = 0;
+  // Small gap between calls so a burst doesn't trip the per-minute rate limit.
+  const delayMs = Number(process.env.REWRITE_DELAY_MS ?? 4000);
+
+  let articles = 0, flagged = 0, skipped = 0, quotaHit = false;
   for (const { cluster_id } of pending) {
     try {
       const out: RewriteOutput = await rewriteCluster({ clusterId: cluster_id });
@@ -62,12 +65,21 @@ export async function stageRewrite(
         db.prepare(`UPDATE articles SET status='published', published_at=? WHERE id=?`).run(Date.now(), id);
       }
     } catch (e) {
-      // On failure (e.g. API 429) the cluster stays 'clustered' and retries next tick.
+      // On failure the cluster stays 'clustered' and retries on the next tick.
       skipped++;
-      console.warn('[rewrite] cluster failed:', cluster_id, (e as Error).message);
+      const msg = (e as Error).message;
+      if (msg.includes('429')) {
+        // Daily free-tier quota exhausted — stop now instead of hammering it
+        // with dozens of guaranteed failures. Resumes automatically next tick.
+        quotaHit = true;
+        console.warn('[rewrite] Gemini quota hit (429) — stopping batch, will resume next tick');
+        break;
+      }
+      console.warn('[rewrite] cluster failed:', cluster_id, msg);
     }
+    if (delayMs > 0) await new Promise((r) => setTimeout(r, delayMs));
   }
-  return { articles, flagged, skipped, pending: pendingTotal };
+  return { articles, flagged, skipped, pending: pendingTotal, quotaHit };
 }
 
 export async function stageImage(maxArticles = 10): Promise<{ thumbed: number }> {

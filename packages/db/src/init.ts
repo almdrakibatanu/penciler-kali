@@ -114,6 +114,12 @@ const DDL = [
     metadata TEXT,
     created_at INTEGER NOT NULL
   )`,
+  // Generic key/value store — used for the cross-process Gemini usage counter.
+  `CREATE TABLE IF NOT EXISTS app_meta (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at INTEGER NOT NULL
+  )`,
 ];
 
 export function initSchema(): void {

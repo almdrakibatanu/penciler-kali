@@ -136,10 +136,10 @@ function buildUserPrompt(items: Array<unknown>, sources: string): string {
   return `নিচের ${items.length}টি সূত্র থেকে একটি unique বাংলা সংবাদ লেখো:\n\n${sources}`;
 }
 
-// ----- Gemini usage tracker --------------------------------------------------
-// Lightweight in-process counters so the admin dashboard can show today's
-// request count and whether the free-tier limit (429) has been hit. Resets at
-// local midnight; also resets if the API process restarts.
+// ----- Gemini usage tracker (DB-backed) --------------------------------------
+// Persisted in app_meta so the count is correct across processes (the hourly
+// scheduler inside the API *and* manual `cli.js rewrite` runs) and survives
+// restarts. Keyed by local date, so it naturally resets at local midnight.
 export interface GeminiUsage {
   date: string;            // YYYY-M-D (local)
   requests: number;        // Gemini calls attempted today
@@ -147,25 +147,40 @@ export interface GeminiUsage {
   lastError429At: number | null;
   lastErrorMsg: string | null;
 }
-const _usage: GeminiUsage = { date: '', requests: 0, errors429: 0, lastError429At: null, lastErrorMsg: null };
-function _rollUsageDate(): void {
+function _usageKey(): string {
   const d = new Date();
-  const key = `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
-  if (_usage.date !== key) {
-    _usage.date = key; _usage.requests = 0; _usage.errors429 = 0;
-    _usage.lastError429At = null; _usage.lastErrorMsg = null;
+  return `gemini_usage_${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+}
+function _readUsage(): GeminiUsage {
+  getDb();
+  const key = _usageKey();
+  const base: GeminiUsage = { date: key, requests: 0, errors429: 0, lastError429At: null, lastErrorMsg: null };
+  try {
+    const row = rawDb().prepare(`SELECT value FROM app_meta WHERE key=?`).get(key) as { value: string } | undefined;
+    return row ? { ...base, ...JSON.parse(row.value) } : base;
+  } catch {
+    return base;
   }
 }
+function _bumpUsage(patch: (u: GeminiUsage) => void): void {
+  try {
+    getDb();
+    const u = _readUsage();
+    patch(u);
+    rawDb().prepare(
+      `INSERT INTO app_meta (key, value, updated_at) VALUES (?, ?, ?)
+       ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at`
+    ).run(_usageKey(), JSON.stringify(u), Date.now());
+  } catch { /* never let usage tracking break a rewrite */ }
+}
 export function getGeminiUsage(): GeminiUsage {
-  _rollUsageDate();
-  return { ..._usage };
+  return _readUsage();
 }
 
 // ----- Gemini (preferred) — REST API, no SDK dependency (Node 20 fetch) -------
 // Uses responseMimeType=application/json so the model returns clean JSON.
 async function callGemini(apiKey: string, model: string, items: Array<{ title: string; url: string; summary: string | null }>): Promise<AIResult> {
-  _rollUsageDate();
-  _usage.requests++;
+  _bumpUsage((u) => { u.requests++; });
   const sources = buildSources(items);
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
   const body = {
@@ -190,9 +205,7 @@ async function callGemini(apiKey: string, model: string, items: Array<{ title: s
   if (!resp || !resp.ok) {
     const errText = resp ? await resp.text().catch(() => '') : '';
     if (resp?.status === 429) {
-      _usage.errors429++;
-      _usage.lastError429At = Date.now();
-      _usage.lastErrorMsg = errText.slice(0, 200);
+      _bumpUsage((u) => { u.errors429++; u.lastError429At = Date.now(); u.lastErrorMsg = errText.slice(0, 200); });
     }
     throw new Error(`Gemini API ${resp?.status ?? 'no-response'}: ${errText.slice(0, 300)}`);
   }
