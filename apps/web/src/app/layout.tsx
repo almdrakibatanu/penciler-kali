@@ -1,6 +1,10 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import Link from 'next/link';
+import Script from 'next/script';
+
+// Google Analytics 4 — only loads when NEXT_PUBLIC_GA_ID is set in .env.
+const GA_ID = process.env.NEXT_PUBLIC_GA_ID;
 
 export const metadata: Metadata = {
   title: { default: 'PencilerKali.com — বাংলাদেশের AI সংবাদ পোর্টাল', template: '%s — PencilerKali.com' },
@@ -25,6 +29,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="bn">
       <body className="min-h-screen flex flex-col bg-slate-50 text-ink-900">
+        {GA_ID && (
+          <>
+            <Script src={`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`} strategy="afterInteractive" />
+            <Script id="ga4" strategy="afterInteractive">
+              {`window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', '${GA_ID}');`}
+            </Script>
+          </>
+        )}
         <header className="border-b border-slate-200 bg-white sticky top-0 z-30">
           <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-4">
             <Link href="/" className="flex items-center gap-2 shrink-0">
