@@ -8,6 +8,7 @@ import { rawDb, getDb } from '@pk/db';
 import { initSchema } from '@pk/db/init';
 import { configure as configureCloud, getAsset, renderTransform, verifyTransform } from '@pk/pencil-cloud';
 import { queueStats } from '@pk/pencil-queue';
+import { getGeminiUsage } from '@pk/ai-rewriter';
 import { startScheduler } from './scheduler.js';
 
 // ----------------------------------------------------------------------------
@@ -105,7 +106,25 @@ app.get('/admin/stats', async () => {
     videos:    (rawDb().prepare(`SELECT COUNT(*) as n FROM videos`).get() as any).n as number,
     posts:     (rawDb().prepare(`SELECT COUNT(*) as n FROM posts`).get() as any).n as number,
   };
-  return { counts, queues: queueStats() };
+
+  // Gemini free-tier usage snapshot for "did I hit the limit?" at a glance.
+  const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
+  const articlesToday = (rawDb().prepare(`SELECT COUNT(*) as n FROM articles WHERE created_at >= ?`)
+    .get(startOfDay.getTime()) as any).n as number;
+  const dailyCap = Number(process.env.REWRITE_DAILY_CAP ?? 1200);
+  const usage = getGeminiUsage();
+  const gemini = {
+    requestsToday: usage.requests,        // Gemini calls attempted since the API process started today
+    articlesToday,                        // articles actually produced today (robust, DB-based)
+    dailyCap,
+    remaining: Math.max(0, dailyCap - articlesToday),
+    limitHit: usage.errors429 > 0,        // ⚠️ true if a 429 (quota) happened today
+    quotaErrorsToday: usage.errors429,
+    lastQuotaErrorAt: usage.lastError429At,
+    lastQuotaErrorMsg: usage.lastErrorMsg,
+  };
+
+  return { counts, queues: queueStats(), gemini };
 });
 
 app.post('/admin/articles/:id/publish', async (req) => {

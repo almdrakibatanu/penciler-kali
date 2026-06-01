@@ -136,9 +136,36 @@ function buildUserPrompt(items: Array<unknown>, sources: string): string {
   return `নিচের ${items.length}টি সূত্র থেকে একটি unique বাংলা সংবাদ লেখো:\n\n${sources}`;
 }
 
+// ----- Gemini usage tracker --------------------------------------------------
+// Lightweight in-process counters so the admin dashboard can show today's
+// request count and whether the free-tier limit (429) has been hit. Resets at
+// local midnight; also resets if the API process restarts.
+export interface GeminiUsage {
+  date: string;            // YYYY-M-D (local)
+  requests: number;        // Gemini calls attempted today
+  errors429: number;       // free-tier quota/rate-limit (429) hits today
+  lastError429At: number | null;
+  lastErrorMsg: string | null;
+}
+const _usage: GeminiUsage = { date: '', requests: 0, errors429: 0, lastError429At: null, lastErrorMsg: null };
+function _rollUsageDate(): void {
+  const d = new Date();
+  const key = `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+  if (_usage.date !== key) {
+    _usage.date = key; _usage.requests = 0; _usage.errors429 = 0;
+    _usage.lastError429At = null; _usage.lastErrorMsg = null;
+  }
+}
+export function getGeminiUsage(): GeminiUsage {
+  _rollUsageDate();
+  return { ..._usage };
+}
+
 // ----- Gemini (preferred) — REST API, no SDK dependency (Node 20 fetch) -------
 // Uses responseMimeType=application/json so the model returns clean JSON.
 async function callGemini(apiKey: string, model: string, items: Array<{ title: string; url: string; summary: string | null }>): Promise<AIResult> {
+  _rollUsageDate();
+  _usage.requests++;
   const sources = buildSources(items);
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
   const body = {
@@ -162,6 +189,11 @@ async function callGemini(apiKey: string, model: string, items: Array<{ title: s
   }
   if (!resp || !resp.ok) {
     const errText = resp ? await resp.text().catch(() => '') : '';
+    if (resp?.status === 429) {
+      _usage.errors429++;
+      _usage.lastError429At = Date.now();
+      _usage.lastErrorMsg = errText.slice(0, 200);
+    }
     throw new Error(`Gemini API ${resp?.status ?? 'no-response'}: ${errText.slice(0, 300)}`);
   }
   const data = await resp.json() as any;
