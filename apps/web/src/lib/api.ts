@@ -13,30 +13,34 @@ export interface Article extends ArticleListItem {
   source_urls: string | null; status: string;
 }
 
+// Safe fetch: returns `fallback` on any network error, non-2xx response, or a
+// non-JSON body (e.g. an HTML error/placeholder page) instead of throwing.
+// Critical during `next build` prerender, when the API may not be reachable yet
+// — without this the page render crashes on `r.json()` of an HTML response.
+async function fetchJson<T>(url: string | URL, opts: { next?: { revalidate?: number } }, fallback: T): Promise<T> {
+  try {
+    const r = await fetch(url, opts as RequestInit);
+    if (!r.ok) return fallback;
+    const ct = r.headers.get('content-type') ?? '';
+    if (!ct.includes('application/json')) return fallback;
+    return (await r.json()) as T;
+  } catch {
+    return fallback;
+  }
+}
+
 export async function listArticles(opts: { category?: string; q?: string; limit?: number; offset?: number } = {}): Promise<{ items: ArticleListItem[] }> {
   const u = new URL(`${BASE}/api/articles`);
   for (const [k, v] of Object.entries(opts)) if (v !== undefined) u.searchParams.set(k, String(v));
-  try {
-    const r = await fetch(u, { next: { revalidate: 60 } });
-    if (!r.ok) return { items: [] };
-    return r.json();
-  } catch { return { items: [] }; }
+  return fetchJson(u, { next: { revalidate: 60 } }, { items: [] as ArticleListItem[] });
 }
 
 export async function getArticle(slug: string): Promise<Article | null> {
-  try {
-    const r = await fetch(`${BASE}/api/articles/${slug}`, { next: { revalidate: 30 } });
-    if (!r.ok) return null;
-    return r.json();
-  } catch { return null; }
+  return fetchJson<Article | null>(`${BASE}/api/articles/${slug}`, { next: { revalidate: 30 } }, null);
 }
 
 export async function listVideos(): Promise<{ items: Array<{ id: number; title: string; thumbnail_url: string | null; youtube_id: string | null; created_at: number }> }> {
-  try {
-    const r = await fetch(`${BASE}/api/videos`, { next: { revalidate: 60 } });
-    if (!r.ok) return { items: [] };
-    return r.json();
-  } catch { return { items: [] }; }
+  return fetchJson(`${BASE}/api/videos`, { next: { revalidate: 60 } }, { items: [] as Array<{ id: number; title: string; thumbnail_url: string | null; youtube_id: string | null; created_at: number }> });
 }
 
 export function formatBnDate(ms: number): string {
