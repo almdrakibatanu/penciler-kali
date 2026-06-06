@@ -88,6 +88,26 @@ async function resolveHeroImage(heroUrl: string | null | undefined, sourceUrls: 
   return await fetchStockImage(category, seed);
 }
 
+// Produce the best possible thumbnail. Tries the provided hero image first; if
+// that image is missing OR can't actually be downloaded (a placeholder results),
+// it falls back to og:image then a stock photo and rebuilds. Returns the
+// thumbnail URL and the hero image that actually worked (null = placeholder).
+async function bestThumbnail(opts: { title: string; category: string; seed: number; heroUrl: string | null; sourceUrls: string[] }): Promise<{ url: string; hero: string | null }> {
+  const wm = 'PencilerKali.com';
+  if (opts.heroUrl) {
+    const t = await buildNewsThumbnail(opts.heroUrl, { title: opts.title, watermark: wm });
+    if (!t.usedPlaceholder) return { url: t.publicUrl, hero: opts.heroUrl };
+  }
+  // hero missing or broken — try og:image, then a category stock photo
+  const alt = await resolveHeroImage(null, opts.sourceUrls, opts.category, opts.seed);
+  if (alt) {
+    const t = await buildNewsThumbnail(alt, { title: opts.title, watermark: wm });
+    if (!t.usedPlaceholder) return { url: t.publicUrl, hero: alt };
+  }
+  const t = await buildNewsThumbnail(null, { title: opts.title, watermark: wm });
+  return { url: t.publicUrl, hero: null };
+}
+
 function parseSourceUrls(raw: string | null | undefined): string[] {
   if (!raw) return [];
   try { const v = JSON.parse(raw); return Array.isArray(v) ? v.filter((u): u is string => typeof u === 'string') : []; }
@@ -151,10 +171,8 @@ export async function stageRewrite(
       // away. Use the cluster's image if present, else pull the source article's
       // og:image; only fall back to a branded placeholder when nothing is found.
       try {
-        const hero = await resolveHeroImage(out.imageUrl, out.sourceUrls ?? [], out.category, id);
-        if (hero && !out.imageUrl) db.prepare(`UPDATE articles SET hero_image_url=? WHERE id=?`).run(hero, id);
-        const thumb = await buildNewsThumbnail(hero, { title: out.title, watermark: 'PencilerKali.com' });
-        db.prepare(`UPDATE articles SET thumbnail_url=?, og_image_url=? WHERE id=?`).run(thumb.publicUrl, thumb.publicUrl, id);
+        const { url, hero } = await bestThumbnail({ title: out.title, category: out.category, seed: id, heroUrl: out.imageUrl ?? null, sourceUrls: out.sourceUrls ?? [] });
+        db.prepare(`UPDATE articles SET thumbnail_url=?, og_image_url=?, hero_image_url=? WHERE id=?`).run(url, url, hero, id);
       } catch (e) {
         console.warn('[rewrite] thumbnail failed for article', id, (e as Error).message);
       }
@@ -176,33 +194,26 @@ export async function stageRewrite(
   return { articles, flagged, skipped, pending: pendingTotal, quotaHit };
 }
 
-// retryNoImage=false (default, used by the cron): only articles with no
-//   thumbnail at all. retryNoImage=true (manual one-shot): articles that have
-//   no real hero image (i.e. currently showing a placeholder) — re-attempt
-//   og:image and upgrade to a real photo when one is found.
-export async function stageImage(maxArticles = 10, retryNoImage = false): Promise<{ thumbed: number; gotRealImage: number }> {
+// force=false (default, used by the cron): only articles with no thumbnail yet.
+// force=true (manual one-shot): re-process ALL articles — validates each hero
+//   image and, if it's missing/broken/placeholder, upgrades it to og:image or a
+//   stock photo. Use this to fix existing articles that show no/broken images.
+export async function stageImage(maxArticles = 10, force = false): Promise<{ thumbed: number; gotRealImage: number }> {
   getDb();
-  const where = retryNoImage
-    ? `hero_image_url IS NULL AND status IN ('published','draft','flagged')`
+  const where = force
+    ? `status IN ('published','draft','flagged')`
     : `thumbnail_url IS NULL AND status IN ('published','draft','flagged')`;
   const rows = rawDb().prepare(`
-    SELECT id, title, category, hero_image_url, thumbnail_url, source_urls FROM articles
-    WHERE ${where} LIMIT ?
-  `).all(maxArticles) as Array<{ id: number; title: string; category: string; hero_image_url: string | null; thumbnail_url: string | null; source_urls: string | null }>;
+    SELECT id, title, category, hero_image_url, source_urls FROM articles
+    WHERE ${where} ORDER BY id DESC LIMIT ?
+  `).all(maxArticles) as Array<{ id: number; title: string; category: string; hero_image_url: string | null; source_urls: string | null }>;
   let thumbed = 0, gotRealImage = 0;
   for (const r of rows) {
     try {
-      const hero = await resolveHeroImage(r.hero_image_url, parseSourceUrls(r.source_urls), r.category, r.id);
-      // In retry mode, if we already have a (placeholder) thumbnail and STILL
-      // found no real image, leave it as-is — don't waste work regenerating it.
-      if (retryNoImage && r.thumbnail_url && !hero) continue;
-      if (hero && !r.hero_image_url) {
-        rawDb().prepare(`UPDATE articles SET hero_image_url=? WHERE id=?`).run(hero, r.id);
-        gotRealImage++;
-      }
-      const t = await buildNewsThumbnail(hero, { title: r.title, watermark: 'PencilerKali.com' });
-      rawDb().prepare(`UPDATE articles SET thumbnail_url=?, og_image_url=? WHERE id=?`)
-        .run(t.publicUrl, t.publicUrl, r.id);
+      const { url, hero } = await bestThumbnail({ title: r.title, category: r.category, seed: r.id, heroUrl: r.hero_image_url, sourceUrls: parseSourceUrls(r.source_urls) });
+      if (hero) gotRealImage++;
+      rawDb().prepare(`UPDATE articles SET thumbnail_url=?, og_image_url=?, hero_image_url=? WHERE id=?`)
+        .run(url, url, hero, r.id);
       thumbed++;
     } catch (e) {
       console.warn('[image] failed for article', r.id, (e as Error).message);

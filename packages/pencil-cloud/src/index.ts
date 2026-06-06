@@ -283,7 +283,7 @@ function placeholderSvg(): Buffer {
 // Always returns a usable thumbnail. If the source is missing or can't be
 // downloaded/decoded (hotlink-blocked, 404, not an image), it falls back to a
 // branded placeholder so EVERY article ends up with a proper image.
-export async function buildNewsThumbnail(sourceUrlOrBuffer: string | Buffer | null | undefined, opts: ThumbnailOptions): Promise<{ assetId: string; publicUrl: string }> {
+export async function buildNewsThumbnail(sourceUrlOrBuffer: string | Buffer | null | undefined, opts: ThumbnailOptions): Promise<{ assetId: string; publicUrl: string; usedPlaceholder: boolean }> {
   // 1) get a usable base image, or fall back to the placeholder
   let base: AssetRecord | null = null;
   if (sourceUrlOrBuffer) {
@@ -292,6 +292,7 @@ export async function buildNewsThumbnail(sourceUrlOrBuffer: string | Buffer | nu
       if (candidate.width && candidate.height) base = candidate; // a real, decodable image
     } catch { /* fall through to placeholder */ }
   }
+  const usedPlaceholder = !base;
   if (!base) {
     base = await upload({ source: placeholderSvg(), kind: 'image', filename: 'placeholder.svg' });
   }
@@ -303,7 +304,7 @@ export async function buildNewsThumbnail(sourceUrlOrBuffer: string | Buffer | nu
     watermark: opts.watermark ?? 'PencilerKali.com',
   };
   await renderTransform(base.id, t);
-  return { assetId: base.id, publicUrl: signTransform(base.id, t) };
+  return { assetId: base.id, publicUrl: signTransform(base.id, t), usedPlaceholder };
 }
 
 // Always good to expose the raw fetcher too — useful in news collection.
