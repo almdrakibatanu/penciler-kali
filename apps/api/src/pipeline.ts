@@ -64,6 +64,15 @@ export async function stageRewrite(
       if (out.status === 'draft') {
         db.prepare(`UPDATE articles SET status='published', published_at=? WHERE id=?`).run(Date.now(), id);
       }
+      // Build the thumbnail immediately so every new article has an image right
+      // away (no waiting for the separate image stage). Falls back to a branded
+      // placeholder if the source image is missing or hotlink-blocked.
+      try {
+        const thumb = await buildNewsThumbnail(out.imageUrl ?? null, { title: out.title, watermark: 'PencilerKali.com' });
+        db.prepare(`UPDATE articles SET thumbnail_url=?, og_image_url=? WHERE id=?`).run(thumb.publicUrl, thumb.publicUrl, id);
+      } catch (e) {
+        console.warn('[rewrite] thumbnail failed for article', id, (e as Error).message);
+      }
     } catch (e) {
       // On failure the cluster stays 'clustered' and retries on the next tick.
       skipped++;
@@ -91,10 +100,9 @@ export async function stageImage(maxArticles = 10): Promise<{ thumbed: number }>
   let thumbed = 0;
   for (const r of rows) {
     try {
-      const source = r.hero_image_url ?? Buffer.from(
-        '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630"><rect width="100%" height="100%" fill="#0e1a2b"/></svg>'
-      , 'utf8');
-      const t = await buildNewsThumbnail(source, { title: r.title, watermark: 'PencilerKali.com' });
+      // buildNewsThumbnail falls back to a branded placeholder if hero_image_url
+      // is null or can't be fetched — so this always produces a thumbnail.
+      const t = await buildNewsThumbnail(r.hero_image_url, { title: r.title, watermark: 'PencilerKali.com' });
       rawDb().prepare(`UPDATE articles SET thumbnail_url=?, og_image_url=? WHERE id=?`)
         .run(t.publicUrl, t.publicUrl, r.id);
       thumbed++;

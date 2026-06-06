@@ -268,9 +268,33 @@ function makeTextSvg(text: string, color: string, width: number, fontSize = 42):
 
 export interface ThumbnailOptions { title: string; subtitle?: string; watermark?: string; }
 
-export async function buildNewsThumbnail(sourceUrlOrBuffer: string | Buffer, opts: ThumbnailOptions): Promise<{ assetId: string; publicUrl: string }> {
-  // 1) upload base
-  const base = await upload({ source: sourceUrlOrBuffer, kind: 'image' });
+// Branded 1200x630 gradient used when an article has no usable hero image.
+// The headline text is added on top by the transform's `text` overlay.
+function placeholderSvg(): Buffer {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630">
+    <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0e1a2b"/><stop offset="100%" stop-color="#1f3a5f"/>
+    </linearGradient></defs>
+    <rect width="1200" height="630" fill="url(#g)"/>
+  </svg>`;
+  return Buffer.from(svg, 'utf8');
+}
+
+// Always returns a usable thumbnail. If the source is missing or can't be
+// downloaded/decoded (hotlink-blocked, 404, not an image), it falls back to a
+// branded placeholder so EVERY article ends up with a proper image.
+export async function buildNewsThumbnail(sourceUrlOrBuffer: string | Buffer | null | undefined, opts: ThumbnailOptions): Promise<{ assetId: string; publicUrl: string }> {
+  // 1) get a usable base image, or fall back to the placeholder
+  let base: AssetRecord | null = null;
+  if (sourceUrlOrBuffer) {
+    try {
+      const candidate = await upload({ source: sourceUrlOrBuffer, kind: 'image' });
+      if (candidate.width && candidate.height) base = candidate; // a real, decodable image
+    } catch { /* fall through to placeholder */ }
+  }
+  if (!base) {
+    base = await upload({ source: placeholderSvg(), kind: 'image', filename: 'placeholder.svg' });
+  }
   // 2) bake a 1200x630 OG variant with title overlay; cache it on disk via renderTransform
   const t: TransformSpec = {
     w: 1200, h: 630, fit: 'cover', format: 'jpeg', quality: 86,
