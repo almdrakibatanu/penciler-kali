@@ -80,20 +80,24 @@ export interface AssetRecord {
   height?: number;
 }
 
-async function fetchBuffer(url: string): Promise<Buffer> {
+async function fetchBuffer(url: string, depth = 0): Promise<Buffer> {
   return new Promise((resolveBuf, reject) => {
     const u = new URL(url);
     const lib = u.protocol === 'https:' ? request : httpRequest;
-    const req = lib(u, { method: 'GET', headers: { 'user-agent': 'PencilerKali/1.0' } }, (res) => {
+    const req = lib(u, { method: 'GET', headers: { 'user-agent': 'PencilerKali/1.0' }, timeout: 15000 }, (res) => {
       if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        fetchBuffer(new URL(res.headers.location, u).toString()).then(resolveBuf, reject);
+        res.resume(); // drain
+        if (depth >= 5) { reject(new Error('too many redirects')); return; }
+        fetchBuffer(new URL(res.headers.location, u).toString(), depth + 1).then(resolveBuf, reject);
         return;
       }
+      if (res.statusCode && res.statusCode >= 400) { res.resume(); reject(new Error(`HTTP ${res.statusCode}`)); return; }
       const chunks: Buffer[] = [];
       res.on('data', (c) => chunks.push(c));
       res.on('end', () => resolveBuf(Buffer.concat(chunks)));
       res.on('error', reject);
     });
+    req.on('timeout', () => req.destroy(new Error('image fetch timeout')));
     req.on('error', reject);
     req.end();
   });
@@ -280,23 +284,20 @@ function placeholderSvg(): Buffer {
   return Buffer.from(svg, 'utf8');
 }
 
-// Always returns a usable thumbnail. If the source is missing or can't be
-// downloaded/decoded (hotlink-blocked, 404, not an image), it falls back to a
-// branded placeholder so EVERY article ends up with a proper image.
-export async function buildNewsThumbnail(sourceUrlOrBuffer: string | Buffer | null | undefined, opts: ThumbnailOptions): Promise<{ assetId: string; publicUrl: string; usedPlaceholder: boolean }> {
-  // 1) get a usable base image, or fall back to the placeholder
-  let base: AssetRecord | null = null;
-  if (sourceUrlOrBuffer) {
-    try {
-      const candidate = await upload({ source: sourceUrlOrBuffer, kind: 'image' });
-      if (candidate.width && candidate.height) base = candidate; // a real, decodable image
-    } catch { /* fall through to placeholder */ }
+// Upload + validate a source into a decodable image asset, or null if the
+// source is missing / can't be downloaded / isn't an image.
+async function uploadUsableImage(source: string | Buffer | null | undefined): Promise<AssetRecord | null> {
+  if (!source) return null;
+  try {
+    const candidate = await upload({ source, kind: 'image' });
+    return candidate.width && candidate.height ? candidate : null;
+  } catch {
+    return null;
   }
-  const usedPlaceholder = !base;
-  if (!base) {
-    base = await upload({ source: placeholderSvg(), kind: 'image', filename: 'placeholder.svg' });
-  }
-  // 2) bake a 1200x630 OG variant with title overlay; cache it on disk via renderTransform
+}
+
+// Bake the 1200x630 OG variant (title overlay) for a base asset; returns its URL.
+async function bakeThumbnailVariant(base: AssetRecord, opts: ThumbnailOptions): Promise<string> {
   const t: TransformSpec = {
     w: 1200, h: 630, fit: 'cover', format: 'jpeg', quality: 86,
     text: opts.title.length > 90 ? opts.title.slice(0, 87) + '…' : opts.title,
@@ -304,7 +305,26 @@ export async function buildNewsThumbnail(sourceUrlOrBuffer: string | Buffer | nu
     watermark: opts.watermark ?? 'PencilerKali.com',
   };
   await renderTransform(base.id, t);
-  return { assetId: base.id, publicUrl: signTransform(base.id, t), usedPlaceholder };
+  return signTransform(base.id, t);
+}
+
+// Strict builder: returns a thumbnail ONLY if `source` is a real, usable image;
+// returns null otherwise WITHOUT baking a placeholder (no wasted asset). Use
+// this to try fallback candidates one by one.
+export async function tryBuildThumbnail(source: string | Buffer | null | undefined, opts: ThumbnailOptions): Promise<{ assetId: string; publicUrl: string } | null> {
+  const base = await uploadUsableImage(source);
+  if (!base) return null;
+  return { assetId: base.id, publicUrl: await bakeThumbnailVariant(base, opts) };
+}
+
+// Always returns a usable thumbnail. If the source is missing or can't be
+// downloaded/decoded (hotlink-blocked, 404, not an image), it falls back to a
+// branded placeholder so EVERY article ends up with a proper image.
+export async function buildNewsThumbnail(sourceUrlOrBuffer: string | Buffer | null | undefined, opts: ThumbnailOptions): Promise<{ assetId: string; publicUrl: string; usedPlaceholder: boolean }> {
+  let base = await uploadUsableImage(sourceUrlOrBuffer);
+  const usedPlaceholder = !base;
+  if (!base) base = await upload({ source: placeholderSvg(), kind: 'image', filename: 'placeholder.svg' });
+  return { assetId: base.id, publicUrl: await bakeThumbnailVariant(base, opts), usedPlaceholder };
 }
 
 // Always good to expose the raw fetcher too — useful in news collection.

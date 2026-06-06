@@ -50,7 +50,12 @@ app.get('/api/articles', async (req) => {
              FROM articles WHERE status='published'`;
   const params: unknown[] = [];
   if (q.category) { sql += ` AND category=?`; params.push(q.category); }
-  if (q.q) { sql += ` AND (title LIKE ? OR summary LIKE ?)`; params.push(`%${q.q}%`, `%${q.q}%`); }
+  if (q.q) {
+    // Escape LIKE wildcards so a literal % or _ in the query isn't treated as one.
+    const esc = q.q.replace(/[\\%_]/g, '\\$&');
+    sql += ` AND (title LIKE ? ESCAPE '\\' OR summary LIKE ? ESCAPE '\\')`;
+    params.push(`%${esc}%`, `%${esc}%`);
+  }
   sql += ` ORDER BY COALESCE(published_at, created_at) DESC LIMIT ? OFFSET ?`;
   params.push(limit, offset);
   const rows = rawDb().prepare(sql).all(...params);
@@ -75,6 +80,8 @@ app.get('/api/videos', async () => {
 app.get('/cdn/raw/:filename', async (req, reply) => {
   const { filename } = req.params as { filename: string };
   const id = filename.split('.')[0]!;
+  // assets ids are UUIDs — reject anything else (also short-circuits junk lookups).
+  if (!/^[0-9a-fA-F-]{36}$/.test(id)) { reply.code(404); return { error: 'not_found' }; }
   const a = getAsset(id);
   if (!a) { reply.code(404); return { error: 'not_found' }; }
   // path is stored with platform separators — normalize for sendFile (which wants forward slashes relative to root).

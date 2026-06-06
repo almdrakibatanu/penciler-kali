@@ -1,7 +1,7 @@
 import { rawDb, getDb } from '@pk/db';
 import { collectAll } from '@pk/news-collector';
 import { clusterUnprocessed, rewriteCluster, persistArticle, type RewriteOutput } from '@pk/ai-rewriter';
-import { buildNewsThumbnail } from '@pk/pencil-cloud';
+import { buildNewsThumbnail, tryBuildThumbnail } from '@pk/pencil-cloud';
 import { renderVideo } from '@pk/pencil-video';
 import { postToPage } from '@pk/publisher-fb';
 import { uploadVideo } from '@pk/publisher-yt';
@@ -76,36 +76,27 @@ async function fetchStockImage(category: string, seed: number): Promise<string |
   return null;
 }
 
-// Best available hero image: an existing one → the source article's og:image →
-// a relevant stock photo. Returns null only when even stock fails (→ placeholder).
-async function resolveHeroImage(heroUrl: string | null | undefined, sourceUrls: string[], category = 'bangladesh', seed = 0): Promise<string | null> {
-  if (heroUrl) return heroUrl;
-  for (const su of sourceUrls.slice(0, 3)) {
+// Produce the best possible thumbnail by trying candidates in priority order and
+// VALIDATING each (only a real, downloadable image counts): provided hero →
+// each source's og:image → a category stock photo → branded placeholder. Each
+// candidate that fails to download is skipped (so e.g. a broken og:image no
+// longer prevents the stock fallback). Returns the thumbnail URL and the hero
+// image that actually worked (null = placeholder).
+async function bestThumbnail(opts: { title: string; category: string; seed: number; heroUrl: string | null; sourceUrls: string[] }): Promise<{ url: string; hero: string | null }> {
+  const meta = { title: opts.title, watermark: 'PencilerKali.com' };
+  if (opts.heroUrl) {
+    const t = await tryBuildThumbnail(opts.heroUrl, meta);
+    if (t) return { url: t.publicUrl, hero: opts.heroUrl };
+  }
+  for (const su of opts.sourceUrls.slice(0, 3)) {
     if (!su) continue;
     const og = await fetchOgImage(su);
-    if (og) return og;
+    if (og) { const t = await tryBuildThumbnail(og, meta); if (t) return { url: t.publicUrl, hero: og }; }
   }
-  return await fetchStockImage(category, seed);
-}
-
-// Produce the best possible thumbnail. Tries the provided hero image first; if
-// that image is missing OR can't actually be downloaded (a placeholder results),
-// it falls back to og:image then a stock photo and rebuilds. Returns the
-// thumbnail URL and the hero image that actually worked (null = placeholder).
-async function bestThumbnail(opts: { title: string; category: string; seed: number; heroUrl: string | null; sourceUrls: string[] }): Promise<{ url: string; hero: string | null }> {
-  const wm = 'PencilerKali.com';
-  if (opts.heroUrl) {
-    const t = await buildNewsThumbnail(opts.heroUrl, { title: opts.title, watermark: wm });
-    if (!t.usedPlaceholder) return { url: t.publicUrl, hero: opts.heroUrl };
-  }
-  // hero missing or broken — try og:image, then a category stock photo
-  const alt = await resolveHeroImage(null, opts.sourceUrls, opts.category, opts.seed);
-  if (alt) {
-    const t = await buildNewsThumbnail(alt, { title: opts.title, watermark: wm });
-    if (!t.usedPlaceholder) return { url: t.publicUrl, hero: alt };
-  }
-  const t = await buildNewsThumbnail(null, { title: opts.title, watermark: wm });
-  return { url: t.publicUrl, hero: null };
+  const stock = await fetchStockImage(opts.category, opts.seed);
+  if (stock) { const t = await tryBuildThumbnail(stock, meta); if (t) return { url: t.publicUrl, hero: stock }; }
+  const ph = await buildNewsThumbnail(null, meta); // always succeeds (placeholder)
+  return { url: ph.publicUrl, hero: null };
 }
 
 function parseSourceUrls(raw: string | null | undefined): string[] {

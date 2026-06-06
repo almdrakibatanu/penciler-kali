@@ -50,7 +50,7 @@ export default async function ArticlePage({ params }: { params: { slug: string }
         <img src={a.thumbnail_url ?? a.hero_image_url ?? ''} alt={a.title} className="my-6 rounded-xl w-full object-cover aspect-[16/9]"/>
       )}
       <div className="prose-bn text-[1.05rem]">
-        {a.body.split(/\n\n+/).map((p, i) => <p key={i}>{p}</p>)}
+        {(a.body ?? '').split(/\n\n+/).map((p, i) => <p key={i}>{p}</p>)}
       </div>
       {sources.length > 0 && (
         <details className="mt-8 border-t border-slate-200 pt-4">
