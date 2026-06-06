@@ -41,16 +41,51 @@ async function fetchOgImage(pageUrl: string): Promise<string | null> {
   } catch { return null; }
 }
 
-// Best available hero image: an existing one, else the first source article's
-// og:image. Returns null only when nothing usable is found (→ placeholder).
-async function resolveHeroImage(heroUrl: string | null | undefined, sourceUrls: string[]): Promise<string | null> {
+// Category → an English stock-photo search term (Pexels/Pixabay search in EN).
+const STOCK_QUERY: Record<string, string> = {
+  bangladesh: 'bangladesh dhaka city',
+  bidesh: 'world map globe news',
+  kheladhula: 'cricket stadium sport',
+  binodon: 'cinema concert entertainment',
+  islamic: 'mosque islamic architecture',
+  'politics-review': 'parliament government politics',
+};
+
+// Fetch a relevant stock photo via Pexels (preferred) or Pixabay. `seed` varies
+// which result is picked so articles in the same category don't all look alike.
+async function fetchStockImage(category: string, seed: number): Promise<string | null> {
+  const query = STOCK_QUERY[category] ?? 'news headline';
+  const pexels = process.env.PEXELS_API_KEY;
+  const pixabay = process.env.PIXABAY_API_KEY;
+  try {
+    if (pexels) {
+      const r = await fetch(`https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=15&orientation=landscape`, { headers: { authorization: pexels } });
+      if (r.ok) {
+        const photos = ((await r.json()) as any)?.photos ?? [];
+        if (photos.length) { const p = photos[seed % photos.length]; return p?.src?.large ?? p?.src?.original ?? null; }
+      }
+    }
+    if (pixabay) {
+      const r = await fetch(`https://pixabay.com/api/?key=${pixabay}&q=${encodeURIComponent(query)}&image_type=photo&orientation=horizontal&per_page=15&safesearch=true`);
+      if (r.ok) {
+        const hits = ((await r.json()) as any)?.hits ?? [];
+        if (hits.length) { const h = hits[seed % hits.length]; return h?.largeImageURL ?? h?.webformatURL ?? null; }
+      }
+    }
+  } catch { /* ignore */ }
+  return null;
+}
+
+// Best available hero image: an existing one → the source article's og:image →
+// a relevant stock photo. Returns null only when even stock fails (→ placeholder).
+async function resolveHeroImage(heroUrl: string | null | undefined, sourceUrls: string[], category = 'bangladesh', seed = 0): Promise<string | null> {
   if (heroUrl) return heroUrl;
   for (const su of sourceUrls.slice(0, 3)) {
     if (!su) continue;
     const og = await fetchOgImage(su);
     if (og) return og;
   }
-  return null;
+  return await fetchStockImage(category, seed);
 }
 
 function parseSourceUrls(raw: string | null | undefined): string[] {
@@ -116,7 +151,7 @@ export async function stageRewrite(
       // away. Use the cluster's image if present, else pull the source article's
       // og:image; only fall back to a branded placeholder when nothing is found.
       try {
-        const hero = await resolveHeroImage(out.imageUrl, out.sourceUrls ?? []);
+        const hero = await resolveHeroImage(out.imageUrl, out.sourceUrls ?? [], out.category, id);
         if (hero && !out.imageUrl) db.prepare(`UPDATE articles SET hero_image_url=? WHERE id=?`).run(hero, id);
         const thumb = await buildNewsThumbnail(hero, { title: out.title, watermark: 'PencilerKali.com' });
         db.prepare(`UPDATE articles SET thumbnail_url=?, og_image_url=? WHERE id=?`).run(thumb.publicUrl, thumb.publicUrl, id);
@@ -151,13 +186,13 @@ export async function stageImage(maxArticles = 10, retryNoImage = false): Promis
     ? `hero_image_url IS NULL AND status IN ('published','draft','flagged')`
     : `thumbnail_url IS NULL AND status IN ('published','draft','flagged')`;
   const rows = rawDb().prepare(`
-    SELECT id, title, hero_image_url, thumbnail_url, source_urls FROM articles
+    SELECT id, title, category, hero_image_url, thumbnail_url, source_urls FROM articles
     WHERE ${where} LIMIT ?
-  `).all(maxArticles) as Array<{ id: number; title: string; hero_image_url: string | null; thumbnail_url: string | null; source_urls: string | null }>;
+  `).all(maxArticles) as Array<{ id: number; title: string; category: string; hero_image_url: string | null; thumbnail_url: string | null; source_urls: string | null }>;
   let thumbed = 0, gotRealImage = 0;
   for (const r of rows) {
     try {
-      const hero = await resolveHeroImage(r.hero_image_url, parseSourceUrls(r.source_urls));
+      const hero = await resolveHeroImage(r.hero_image_url, parseSourceUrls(r.source_urls), r.category, r.id);
       // In retry mode, if we already have a (placeholder) thumbnail and STILL
       // found no real image, leave it as-is — don't waste work regenerating it.
       if (retryNoImage && r.thumbnail_url && !hero) continue;
