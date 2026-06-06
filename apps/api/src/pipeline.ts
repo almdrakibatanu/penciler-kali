@@ -11,6 +11,54 @@ import { uploadVideo } from '@pk/publisher-yt';
 // safe to re-run; the scheduler chains them every N minutes.
 // ----------------------------------------------------------------------------
 
+// Fetch a source article page and pull its OpenGraph/Twitter lead image. Most
+// news articles expose a real photo via <meta property="og:image"> even when
+// the RSS feed had none — this gives real images instead of placeholders.
+async function fetchOgImage(pageUrl: string): Promise<string | null> {
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);
+    const res = await fetch(pageUrl, {
+      headers: { 'user-agent': 'Mozilla/5.0 (compatible; PencilerKaliBot/1.0; +https://pencilerkali.com)' },
+      signal: ctrl.signal, redirect: 'follow',
+    });
+    clearTimeout(timer);
+    if (!res.ok) return null;
+    const html = (await res.text()).slice(0, 200_000); // the <head> is near the top
+    const patterns = [
+      /<meta[^>]+(?:property|name)=["'](?:og:image(?::url)?|twitter:image(?::src)?)["'][^>]*content=["']([^"']+)["']/i,
+      /<meta[^>]+content=["']([^"']+)["'][^>]*(?:property|name)=["'](?:og:image(?::url)?|twitter:image(?::src)?)["']/i,
+    ];
+    for (const re of patterns) {
+      const m = html.match(re);
+      if (m && m[1]) {
+        const raw = m[1].trim().replace(/&amp;/g, '&');
+        if (/^https?:\/\//i.test(raw)) return raw;
+        try { return new URL(raw, pageUrl).toString(); } catch { /* ignore */ }
+      }
+    }
+    return null;
+  } catch { return null; }
+}
+
+// Best available hero image: an existing one, else the first source article's
+// og:image. Returns null only when nothing usable is found (→ placeholder).
+async function resolveHeroImage(heroUrl: string | null | undefined, sourceUrls: string[]): Promise<string | null> {
+  if (heroUrl) return heroUrl;
+  for (const su of sourceUrls.slice(0, 3)) {
+    if (!su) continue;
+    const og = await fetchOgImage(su);
+    if (og) return og;
+  }
+  return null;
+}
+
+function parseSourceUrls(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  try { const v = JSON.parse(raw); return Array.isArray(v) ? v.filter((u): u is string => typeof u === 'string') : []; }
+  catch { return []; }
+}
+
 export async function stageCollect(): Promise<{ inserted: number; fetched: number; errors: number }> {
   const s = await collectAll(80);
   return { inserted: s.inserted, fetched: s.fetched, errors: s.errors.length };
@@ -65,10 +113,12 @@ export async function stageRewrite(
         db.prepare(`UPDATE articles SET status='published', published_at=? WHERE id=?`).run(Date.now(), id);
       }
       // Build the thumbnail immediately so every new article has an image right
-      // away (no waiting for the separate image stage). Falls back to a branded
-      // placeholder if the source image is missing or hotlink-blocked.
+      // away. Use the cluster's image if present, else pull the source article's
+      // og:image; only fall back to a branded placeholder when nothing is found.
       try {
-        const thumb = await buildNewsThumbnail(out.imageUrl ?? null, { title: out.title, watermark: 'PencilerKali.com' });
+        const hero = await resolveHeroImage(out.imageUrl, out.sourceUrls ?? []);
+        if (hero && !out.imageUrl) db.prepare(`UPDATE articles SET hero_image_url=? WHERE id=?`).run(hero, id);
+        const thumb = await buildNewsThumbnail(hero, { title: out.title, watermark: 'PencilerKali.com' });
         db.prepare(`UPDATE articles SET thumbnail_url=?, og_image_url=? WHERE id=?`).run(thumb.publicUrl, thumb.publicUrl, id);
       } catch (e) {
         console.warn('[rewrite] thumbnail failed for article', id, (e as Error).message);
@@ -91,18 +141,31 @@ export async function stageRewrite(
   return { articles, flagged, skipped, pending: pendingTotal, quotaHit };
 }
 
-export async function stageImage(maxArticles = 10): Promise<{ thumbed: number }> {
+// retryNoImage=false (default, used by the cron): only articles with no
+//   thumbnail at all. retryNoImage=true (manual one-shot): articles that have
+//   no real hero image (i.e. currently showing a placeholder) — re-attempt
+//   og:image and upgrade to a real photo when one is found.
+export async function stageImage(maxArticles = 10, retryNoImage = false): Promise<{ thumbed: number; gotRealImage: number }> {
   getDb();
+  const where = retryNoImage
+    ? `hero_image_url IS NULL AND status IN ('published','draft','flagged')`
+    : `thumbnail_url IS NULL AND status IN ('published','draft','flagged')`;
   const rows = rawDb().prepare(`
-    SELECT id, title, hero_image_url FROM articles
-    WHERE thumbnail_url IS NULL AND status IN ('published','draft','flagged') LIMIT ?
-  `).all(maxArticles) as Array<{ id: number; title: string; hero_image_url: string | null }>;
-  let thumbed = 0;
+    SELECT id, title, hero_image_url, thumbnail_url, source_urls FROM articles
+    WHERE ${where} LIMIT ?
+  `).all(maxArticles) as Array<{ id: number; title: string; hero_image_url: string | null; thumbnail_url: string | null; source_urls: string | null }>;
+  let thumbed = 0, gotRealImage = 0;
   for (const r of rows) {
     try {
-      // buildNewsThumbnail falls back to a branded placeholder if hero_image_url
-      // is null or can't be fetched — so this always produces a thumbnail.
-      const t = await buildNewsThumbnail(r.hero_image_url, { title: r.title, watermark: 'PencilerKali.com' });
+      const hero = await resolveHeroImage(r.hero_image_url, parseSourceUrls(r.source_urls));
+      // In retry mode, if we already have a (placeholder) thumbnail and STILL
+      // found no real image, leave it as-is — don't waste work regenerating it.
+      if (retryNoImage && r.thumbnail_url && !hero) continue;
+      if (hero && !r.hero_image_url) {
+        rawDb().prepare(`UPDATE articles SET hero_image_url=? WHERE id=?`).run(hero, r.id);
+        gotRealImage++;
+      }
+      const t = await buildNewsThumbnail(hero, { title: r.title, watermark: 'PencilerKali.com' });
       rawDb().prepare(`UPDATE articles SET thumbnail_url=?, og_image_url=? WHERE id=?`)
         .run(t.publicUrl, t.publicUrl, r.id);
       thumbed++;
@@ -110,7 +173,7 @@ export async function stageImage(maxArticles = 10): Promise<{ thumbed: number }>
       console.warn('[image] failed for article', r.id, (e as Error).message);
     }
   }
-  return { thumbed };
+  return { thumbed, gotRealImage };
 }
 
 export async function stageVideo(maxArticles = 2): Promise<{ rendered: number }> {

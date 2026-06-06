@@ -21,7 +21,7 @@ async function main() {
     case 'seed':         console.log(`[seed] new sources: ${seedSources()}`); break;
     case 'collect':      console.log(JSON.stringify(await stageCollect(), null, 2)); break;
     case 'rewrite':      console.log(JSON.stringify(await stageRewrite(Number(argMap.get('limit') ?? 5)), null, 2)); break;
-    case 'image':        console.log(JSON.stringify(await stageImage(Number(argMap.get('limit') ?? 10)), null, 2)); break;
+    case 'image':        console.log(JSON.stringify(await stageImage(Number(argMap.get('limit') ?? 10), argMap.get('retry-images') === 'true'), null, 2)); break;
     case 'video':        console.log(JSON.stringify(await stageVideo(Number(argMap.get('limit') ?? 1)), null, 2)); break;
     case 'publish-fb':   console.log(JSON.stringify(await stagePublishFb(Number(argMap.get('limit') ?? 5)), null, 2)); break;
     case 'publish-yt':   console.log(JSON.stringify(await stagePublishYt(Number(argMap.get('limit') ?? 1)), null, 2)); break;
