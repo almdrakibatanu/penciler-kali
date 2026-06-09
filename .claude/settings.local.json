@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls apps/web/src)",
+      "Bash(ls apps/web)",
+      "Bash(grep -rni \"notify\\\\|nodemailer\\\\|sendmail\\\\|webhook\\\\|alert\\\\|admin\" apps packages --include=*.ts -l)",
+      "Bash(grep -rn \"status='rewritten'\\\\|status='clustered'\\\\|status='new'\\\\|status='flagged'\" packages/ai-rewriter/src apps/api/src)",
+      "Bash(git check-ignore *)",
+      "Bash(git ls-files *)",
+      "Bash(node --input-type=module -e ' *)"
+    ]
+  }
+}
