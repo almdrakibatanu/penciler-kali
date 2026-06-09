@@ -12,7 +12,9 @@ export const metadata: Metadata = {
   description: 'বাংলাদেশ, বিদেশ, খেলাধুলা, বিনোদন ও ইসলামিক সংবাদের AI-চালিত সম্পূর্ণ স্বয়ংক্রিয় বাংলা প্ল্যাটফর্ম।',
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? 'https://pencilerkali.com'),
   openGraph: { siteName: 'PencilerKali.com', locale: 'bn_BD', type: 'website' },
-  alternates: { canonical: '/' },
+  // NOTE: no global `canonical` here — a blanket '/' makes every page declare
+  // itself a duplicate of the homepage, so Facebook/Google scrape the homepage
+  // instead of the article. Each page sets its own canonical below.
   robots: { index: true, follow: true },
 };
 

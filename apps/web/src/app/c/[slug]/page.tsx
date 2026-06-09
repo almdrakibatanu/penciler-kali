@@ -16,6 +16,7 @@ export async function generateMetadata({ params }: { params: { slug: string } })
   return {
     title: `${label} সংবাদ`,
     description: `সর্বশেষ ${label} সংবাদ — PencilerKali.com`,
+    alternates: { canonical: `/c/${params.slug}` },
   };
 }
 

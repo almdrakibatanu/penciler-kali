@@ -16,9 +16,11 @@ export async function generateMetadata({ params }: { params: { slug: string } })
   return {
     title: a.seo_title ?? a.title,
     description: a.seo_description ?? a.summary ?? undefined,
+    alternates: { canonical: `/article/${params.slug}` },
     openGraph: {
       title: a.seo_title ?? a.title,
       description: a.seo_description ?? a.summary ?? undefined,
+      url: `/article/${params.slug}`,
       images: a.og_image_url ? [{ url: a.og_image_url }] : (a.hero_image_url ? [{ url: a.hero_image_url }] : []),
       type: 'article',
     },

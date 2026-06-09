@@ -1,8 +1,11 @@
 import { listArticles } from '@/lib/api';
 import { NewsCard } from '@/components/NewsCard';
+import type { Metadata } from 'next';
 import Link from 'next/link';
 
 export const revalidate = 60;
+
+export const metadata: Metadata = { alternates: { canonical: '/' } };
 
 const CATS: Array<{ slug: string; label: string }> = [
   { slug: 'bangladesh', label: 'বাংলাদেশ' },
