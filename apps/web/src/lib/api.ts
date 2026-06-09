@@ -45,5 +45,7 @@ export async function listVideos(): Promise<{ items: Array<{ id: number; title: 
 
 export function formatBnDate(ms: number): string {
   const d = new Date(ms);
-  return d.toLocaleString('bn-BD', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  // Always render in Bangladesh time (UTC+6) regardless of the server's TZ —
+  // these run as server components, so without this the time shows in UTC.
+  return d.toLocaleString('bn-BD', { timeZone: 'Asia/Dhaka', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
