@@ -8,7 +8,7 @@ import { rawDb, getDb } from '@pk/db';
 import { initSchema } from '@pk/db/init';
 import { configure as configureCloud, getAsset, renderTransform, verifyTransform } from '@pk/pencil-cloud';
 import { queueStats } from '@pk/pencil-queue';
-import { getGeminiUsage } from '@pk/ai-rewriter';
+import { getGeminiUsage, geminiKeys } from '@pk/ai-rewriter';
 import { startScheduler } from './scheduler.js';
 
 // ----------------------------------------------------------------------------
@@ -121,6 +121,7 @@ app.get('/admin/stats', async () => {
   const dailyCap = Number(process.env.REWRITE_DAILY_CAP ?? 1200);
   const usage = getGeminiUsage();
   const gemini = {
+    keysConfigured: geminiKeys().length,  // how many Gemini API keys are loaded for rotation
     requestsToday: usage.requests,        // Gemini calls attempted since the API process started today
     articlesToday,                        // articles actually produced today (robust, DB-based)
     dailyCap,

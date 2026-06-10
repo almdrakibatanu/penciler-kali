@@ -109,12 +109,14 @@ export async function rewriteCluster(input: RewriteInput): Promise<RewriteOutput
   if (items.length === 0) throw new Error(`cluster ${input.clusterId} is empty`);
 
   // Gemini is the only AI provider. No key → offline stub (dev/demo mode).
-  const geminiKey = process.env.GEMINI_API_KEY;
+  // Multiple keys (e.g. from different Google accounts) → rotate to the next one
+  // when a key's free-tier quota is exhausted (429).
+  const keys = geminiKeys();
   const geminiModel = process.env.GEMINI_MODEL ?? 'gemini-2.5-flash';
 
   let parsed: AIResult;
-  if (geminiKey) {
-    parsed = await callGemini(geminiKey, geminiModel, items);
+  if (keys.length) {
+    parsed = await callGeminiWithFallback(keys, geminiModel, items);
   } else {
     parsed = stubRewrite(items);
   }
@@ -175,6 +177,54 @@ function _bumpUsage(patch: (u: GeminiUsage) => void): void {
 }
 export function getGeminiUsage(): GeminiUsage {
   return _readUsage();
+}
+
+// ----- Multi-key support -----------------------------------------------------
+// Collect every configured Gemini key, in priority order. Supports both a
+// comma-separated GEMINI_API_KEY ("key1,key2") and numbered GEMINI_API_KEY_2..N.
+// Letting you add a second Google account's free-tier key as a fallback.
+export function geminiKeys(): string[] {
+  const keys: string[] = [];
+  for (const part of (process.env.GEMINI_API_KEY ?? '').split(',')) {
+    const k = part.trim();
+    if (k) keys.push(k);
+  }
+  for (let i = 2; i <= 10; i++) {
+    const k = (process.env[`GEMINI_API_KEY_${i}`] ?? '').trim();
+    if (k) keys.push(k);
+  }
+  return [...new Set(keys)];
+}
+
+// Per-process cooldown: once a key returns 429 (quota/rate-limit), skip it for a
+// while so we don't waste a guaranteed-failing request on it for every cluster.
+// Cleared on restart; free-tier daily quotas reset at Google's midnight (PT).
+const _keyCooldownUntil = new Map<string, number>();
+const KEY_COOLDOWN_MS = Number(process.env.GEMINI_KEY_COOLDOWN_MS ?? 30 * 60_000);
+
+// Try each key in turn; on 429 put that key on cooldown and fall through to the
+// next. Only when ALL keys are exhausted do we surface a 429 (so the caller
+// stops the batch and retries next tick). Non-quota errors bubble up immediately
+// (no point burning other keys on a parse error or a 503).
+async function callGeminiWithFallback(keys: string[], model: string, items: Array<{ title: string; url: string; summary: string | null }>): Promise<AIResult> {
+  const now = Date.now();
+  const fresh = keys.filter((k) => (_keyCooldownUntil.get(k) ?? 0) <= now);
+  const order = fresh.length ? fresh : keys; // all on cooldown → try anyway (may have reset)
+  let last429: Error | null = null;
+  for (const key of order) {
+    try {
+      return await callGemini(key, model, items);
+    } catch (e) {
+      const msg = (e as Error).message;
+      if (msg.includes('429')) {
+        _keyCooldownUntil.set(key, Date.now() + KEY_COOLDOWN_MS);
+        last429 = e as Error;
+        continue;
+      }
+      throw e;
+    }
+  }
+  throw last429 ?? new Error('Gemini API 429: all keys exhausted');
 }
 
 // ----- Gemini (preferred) — REST API, no SDK dependency (Node 20 fetch) -------
