@@ -8,7 +8,7 @@ import { rawDb, getDb } from '@pk/db';
 import { initSchema } from '@pk/db/init';
 import { configure as configureCloud, getAsset, renderTransform, verifyTransform } from '@pk/pencil-cloud';
 import { queueStats } from '@pk/pencil-queue';
-import { getGeminiUsage, geminiKeys } from '@pk/ai-rewriter';
+import { getGeminiUsage, getGroqUsage, geminiKeys } from '@pk/ai-rewriter';
 import { startScheduler } from './scheduler.js';
 
 // ----------------------------------------------------------------------------
@@ -114,25 +114,36 @@ app.get('/admin/stats', async () => {
     posts:     (rawDb().prepare(`SELECT COUNT(*) as n FROM posts`).get() as any).n as number,
   };
 
-  // Gemini free-tier usage snapshot for "did I hit the limit?" at a glance.
+  // AI engines usage snapshot for "did I hit the limit?" at a glance.
   const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
   const articlesToday = (rawDb().prepare(`SELECT COUNT(*) as n FROM articles WHERE created_at >= ?`)
     .get(startOfDay.getTime()) as any).n as number;
   const dailyCap = Number(process.env.REWRITE_DAILY_CAP ?? 1200);
-  const usage = getGeminiUsage();
+  
+  const geminiUsage = getGeminiUsage();
   const gemini = {
     keysConfigured: geminiKeys().length,  // how many Gemini API keys are loaded for rotation
-    requestsToday: usage.requests,        // Gemini calls attempted since the API process started today
+    requestsToday: geminiUsage.requests,  // Gemini calls attempted today
     articlesToday,                        // articles actually produced today (robust, DB-based)
     dailyCap,
     remaining: Math.max(0, dailyCap - articlesToday),
-    limitHit: usage.errors429 > 0,        // ⚠️ true if a 429 (quota) happened today
-    quotaErrorsToday: usage.errors429,
-    lastQuotaErrorAt: usage.lastError429At,
-    lastQuotaErrorMsg: usage.lastErrorMsg,
+    limitHit: geminiUsage.errors429 > 0,  // ⚠️ true if a 429 (quota) happened today
+    quotaErrorsToday: geminiUsage.errors429,
+    lastQuotaErrorAt: geminiUsage.lastError429At,
+    lastQuotaErrorMsg: geminiUsage.lastErrorMsg,
   };
 
-  return { counts, queues: queueStats(), gemini };
+  const groqUsage = getGroqUsage();
+  const groq = {
+    enabled: !!process.env.GROQ_API_KEY,   // is Groq API key configured?
+    requestsToday: groqUsage.requests,     // Groq calls attempted today
+    quotaErrorsToday: groqUsage.errors429,
+    limitHit: groqUsage.errors429 > 0,     // true if a 429/503 happened today
+    lastQuotaErrorAt: groqUsage.lastError429At,
+    lastQuotaErrorMsg: groqUsage.lastErrorMsg,
+  };
+
+  return { counts, queues: queueStats(), gemini, groq };
 });
 
 app.post('/admin/articles/:id/publish', async (req) => {

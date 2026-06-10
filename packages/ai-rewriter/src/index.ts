@@ -170,6 +170,45 @@ export function getGeminiUsage(): GeminiUsage {
   return _readUsage();
 }
 
+// ----- Groq usage tracker (DB-backed) ----------------------------------------
+// Similar to Gemini, tracks daily usage for Groq. Keyed by local date.
+export interface GroqUsage {
+  date: string;            // YYYY-M-D (local)
+  requests: number;        // Groq calls attempted today
+  errors429: number;       // quota/rate-limit (429) hits today
+  lastError429At: number | null;
+  lastErrorMsg: string | null;
+}
+function _groqUsageKey(): string {
+  const d = new Date();
+  return `groq_usage_${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+}
+function _readGroqUsage(): GroqUsage {
+  getDb();
+  const key = _groqUsageKey();
+  const base: GroqUsage = { date: key, requests: 0, errors429: 0, lastError429At: null, lastErrorMsg: null };
+  try {
+    const row = rawDb().prepare(`SELECT value FROM app_meta WHERE key=?`).get(key) as { value: string } | undefined;
+    return row ? { ...base, ...JSON.parse(row.value) } : base;
+  } catch {
+    return base;
+  }
+}
+function _bumpGroqUsage(patch: (u: GroqUsage) => void): void {
+  try {
+    getDb();
+    const u = _readGroqUsage();
+    patch(u);
+    rawDb().prepare(
+      `INSERT INTO app_meta (key, value, updated_at) VALUES (?, ?, ?)
+       ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at`
+    ).run(_groqUsageKey(), JSON.stringify(u), Date.now());
+  } catch { /* never let usage tracking break a rewrite */ }
+}
+export function getGroqUsage(): GroqUsage {
+  return _readGroqUsage();
+}
+
 // ----- Engine cascade (multi-model, multi-key, multi-provider) ---------------
 // Free-tier quota is counted PER MODEL and PER PROVIDER, so we cascade across
 // all of them: every Gemini model × every Gemini key, then Groq, then (if
@@ -263,6 +302,10 @@ async function generateArticle(items: SourceItems): Promise<AIResult> {
 // One adapter for any provider exposing POST /chat/completions. Quota/rate-limit
 // errors include the HTTP status so isQuotaError() can detect them.
 async function callOpenAICompatible(baseUrl: string, apiKey: string, model: string, items: SourceItems): Promise<AIResult> {
+  // Track Groq usage separately from Gemini.
+  const isGroq = baseUrl.includes('groq');
+  if (isGroq) _bumpGroqUsage((u) => { u.requests++; });
+
   const sources = buildSources(items);
   const body = {
     model,
@@ -286,6 +329,9 @@ async function callOpenAICompatible(baseUrl: string, apiKey: string, model: stri
   }
   if (!resp || !resp.ok) {
     const errText = resp ? await resp.text().catch(() => '') : '';
+    if (isGroq && (resp?.status === 429 || resp?.status === 503)) {
+      _bumpGroqUsage((u) => { u.errors429++; u.lastError429At = Date.now(); u.lastErrorMsg = errText.slice(0, 200); });
+    }
     throw new Error(`${baseUrl} ${resp?.status ?? 'no-response'}: ${errText.slice(0, 300)}`);
   }
   const data = (await resp.json()) as any;
