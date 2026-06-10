@@ -108,18 +108,9 @@ export async function rewriteCluster(input: RewriteInput): Promise<RewriteOutput
   ).all(input.clusterId) as Array<{ title: string; url: string; summary: string | null; image_url: string | null; published_at: number | null }>;
   if (items.length === 0) throw new Error(`cluster ${input.clusterId} is empty`);
 
-  // Gemini is the only AI provider. No key → offline stub (dev/demo mode).
-  // Multiple keys (e.g. from different Google accounts) → rotate to the next one
-  // when a key's free-tier quota is exhausted (429).
-  const keys = geminiKeys();
-  const geminiModel = process.env.GEMINI_MODEL ?? 'gemini-2.5-flash';
-
-  let parsed: AIResult;
-  if (keys.length) {
-    parsed = await callGeminiWithFallback(keys, geminiModel, items);
-  } else {
-    parsed = stubRewrite(items);
-  }
+  // Generate via the engine cascade (Gemini models × keys, then Groq, then a
+  // final offline stub if nothing is configured). See generateArticle().
+  const parsed: AIResult = await generateArticle(items);
 
   const slug = slugify(parsed.title) + '-' + input.clusterId.slice(0, 6);
   const sourceUrls = items.map((i) => i.url);
@@ -179,10 +170,15 @@ export function getGeminiUsage(): GeminiUsage {
   return _readUsage();
 }
 
-// ----- Multi-key support -----------------------------------------------------
+// ----- Engine cascade (multi-model, multi-key, multi-provider) ---------------
+// Free-tier quota is counted PER MODEL and PER PROVIDER, so we cascade across
+// all of them: every Gemini model × every Gemini key, then Groq, then (if
+// nothing is configured) an offline stub. When an engine hits its quota (429)
+// it's put on cooldown and the next engine is tried — so most articles use the
+// best engine and only the overflow drops to lower tiers.
+
 // Collect every configured Gemini key, in priority order. Supports both a
 // comma-separated GEMINI_API_KEY ("key1,key2") and numbered GEMINI_API_KEY_2..N.
-// Letting you add a second Google account's free-tier key as a fallback.
 export function geminiKeys(): string[] {
   const keys: string[] = [];
   for (const part of (process.env.GEMINI_API_KEY ?? '').split(',')) {
@@ -196,35 +192,106 @@ export function geminiKeys(): string[] {
   return [...new Set(keys)];
 }
 
-// Per-process cooldown: once a key returns 429 (quota/rate-limit), skip it for a
-// while so we don't waste a guaranteed-failing request on it for every cluster.
-// Cleared on restart; free-tier daily quotas reset at Google's midnight (PT).
-const _keyCooldownUntil = new Map<string, number>();
-const KEY_COOLDOWN_MS = Number(process.env.GEMINI_KEY_COOLDOWN_MS ?? 30 * 60_000);
+// Gemini models to cascade through, best-quality first. Each model has its own
+// free-tier daily quota, so listing several multiplies free capacity per key.
+// Override with GEMINI_MODELS (comma list) or legacy GEMINI_MODEL (single).
+function geminiModels(): string[] {
+  const raw = process.env.GEMINI_MODELS ?? process.env.GEMINI_MODEL;
+  if (raw) return [...new Set(raw.split(',').map((s) => s.trim()).filter(Boolean))];
+  return ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash'];
+}
 
-// Try each key in turn; on 429 put that key on cooldown and fall through to the
-// next. Only when ALL keys are exhausted do we surface a 429 (so the caller
-// stops the batch and retries next tick). Non-quota errors bubble up immediately
-// (no point burning other keys on a parse error or a 503).
-async function callGeminiWithFallback(keys: string[], model: string, items: Array<{ title: string; url: string; summary: string | null }>): Promise<AIResult> {
+interface Engine { id: string; call: (items: SourceItems) => Promise<AIResult>; }
+type SourceItems = Array<{ title: string; url: string; summary: string | null }>;
+
+// Build the ordered engine list: Gemini (each model × each key, quality-first),
+// then any OpenAI-compatible fallback providers (Groq, OpenRouter, …).
+function buildEngines(): Engine[] {
+  const engines: Engine[] = [];
+  const keys = geminiKeys();
+  for (const model of geminiModels()) {
+    keys.forEach((key, i) => {
+      engines.push({ id: `gemini:${model}:${i}`, call: (items) => callGemini(key, model, items) });
+    });
+  }
+  // Groq — generous free tier, OpenAI-compatible API.
+  const groqKey = (process.env.GROQ_API_KEY ?? '').trim();
+  if (groqKey) {
+    const groqModel = process.env.GROQ_MODEL ?? 'llama-3.3-70b-versatile';
+    engines.push({ id: `groq:${groqModel}`, call: (items) => callOpenAICompatible('https://api.groq.com/openai/v1', groqKey, groqModel, items) });
+  }
+  // OpenRouter — optional second OpenAI-compatible fallback.
+  const orKey = (process.env.OPENROUTER_API_KEY ?? '').trim();
+  if (orKey) {
+    const orModel = process.env.OPENROUTER_MODEL ?? 'meta-llama/llama-3.3-70b-instruct:free';
+    engines.push({ id: `openrouter:${orModel}`, call: (items) => callOpenAICompatible('https://openrouter.ai/api/v1', orKey, orModel, items) });
+  }
+  return engines;
+}
+
+// Per-process cooldown: once an engine returns 429 (quota/rate-limit), skip it
+// for a while so we don't waste a guaranteed-failing call on it for every
+// cluster. Cleared on restart; provider daily quotas reset on their own clocks.
+const _engineCooldownUntil = new Map<string, number>();
+const ENGINE_COOLDOWN_MS = Number(process.env.AI_ENGINE_COOLDOWN_MS ?? process.env.GEMINI_KEY_COOLDOWN_MS ?? 30 * 60_000);
+const isQuotaError = (msg: string): boolean => msg.includes('429') || /quota|rate.?limit|resource_exhausted|exhausted/i.test(msg);
+
+// Run the cascade for one cluster. Skips engines on cooldown; on a quota error
+// the engine is cooled down and we fall to the next; on any other error we also
+// try the next engine. If every engine is on cooldown we surface a 429 so the
+// caller stops the batch and retries next tick. No engines configured → stub.
+async function generateArticle(items: SourceItems): Promise<AIResult> {
+  const engines = buildEngines();
+  if (engines.length === 0) return stubRewrite(items);
   const now = Date.now();
-  const fresh = keys.filter((k) => (_keyCooldownUntil.get(k) ?? 0) <= now);
-  const order = fresh.length ? fresh : keys; // all on cooldown → try anyway (may have reset)
-  let last429: Error | null = null;
-  for (const key of order) {
+  const fresh = engines.filter((e) => (_engineCooldownUntil.get(e.id) ?? 0) <= now);
+  if (fresh.length === 0) throw new Error('AI quota 429: all engines on cooldown — will resume next tick');
+  let lastErr: Error | null = null;
+  for (const eng of fresh) {
     try {
-      return await callGemini(key, model, items);
+      return await eng.call(items);
     } catch (e) {
-      const msg = (e as Error).message;
-      if (msg.includes('429')) {
-        _keyCooldownUntil.set(key, Date.now() + KEY_COOLDOWN_MS);
-        last429 = e as Error;
-        continue;
-      }
-      throw e;
+      lastErr = e as Error;
+      if (isQuotaError(lastErr.message)) _engineCooldownUntil.set(eng.id, Date.now() + ENGINE_COOLDOWN_MS);
+      // try the next engine regardless of error type
     }
   }
-  throw last429 ?? new Error('Gemini API 429: all keys exhausted');
+  throw lastErr ?? new Error('all AI engines failed');
+}
+
+// ----- OpenAI-compatible providers (Groq / OpenRouter / GitHub Models / …) ---
+// One adapter for any provider exposing POST /chat/completions. Quota/rate-limit
+// errors include the HTTP status so isQuotaError() can detect them.
+async function callOpenAICompatible(baseUrl: string, apiKey: string, model: string, items: SourceItems): Promise<AIResult> {
+  const sources = buildSources(items);
+  const body = {
+    model,
+    messages: [
+      { role: 'system', content: `${POLICY_BN}\n\n${SCHEMA_INSTRUCTION}` },
+      { role: 'user', content: buildUserPrompt(items, sources) },
+    ],
+    temperature: 0.7,
+    max_tokens: 2200,
+    response_format: { type: 'json_object' },
+  };
+  let resp: Response | undefined;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    resp = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify(body),
+    });
+    if (resp.ok || (resp.status !== 502 && resp.status !== 503)) break;
+    if (attempt < 2) await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+  }
+  if (!resp || !resp.ok) {
+    const errText = resp ? await resp.text().catch(() => '') : '';
+    throw new Error(`${baseUrl} ${resp?.status ?? 'no-response'}: ${errText.slice(0, 300)}`);
+  }
+  const data = (await resp.json()) as any;
+  const text: string = data?.choices?.[0]?.message?.content ?? '';
+  if (!text.trim()) throw new Error('provider returned empty response: ' + JSON.stringify(data).slice(0, 300));
+  return parseJsonStrict(text);
 }
 
 // ----- Gemini (preferred) — REST API, no SDK dependency (Node 20 fetch) -------
