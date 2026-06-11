@@ -8,7 +8,7 @@ import { rawDb, getDb } from '@pk/db';
 import { initSchema } from '@pk/db/init';
 import { configure as configureCloud, getAsset, renderTransform, verifyTransform } from '@pk/pencil-cloud';
 import { queueStats } from '@pk/pencil-queue';
-import { getGeminiUsage, getGroqUsage, geminiKeys } from '@pk/ai-rewriter';
+import { getGeminiUsage, getGroqUsage, geminiKeys, getEngineStats } from '@pk/ai-rewriter';
 import { startScheduler } from './scheduler.js';
 
 // ----------------------------------------------------------------------------
@@ -143,7 +143,7 @@ app.get('/admin/stats', async () => {
     lastQuotaErrorMsg: groqUsage.lastErrorMsg,
   };
 
-  return { counts, queues: queueStats(), gemini, groq };
+  return { counts, queues: queueStats(), gemini, groq, engines: getEngineStats() };
 });
 
 app.post('/admin/articles/:id/publish', async (req) => {

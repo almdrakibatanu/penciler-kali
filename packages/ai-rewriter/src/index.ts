@@ -28,6 +28,14 @@ export interface ClusterReport { clusterId: string; itemIds: number[]; sample: s
 export function clusterUnprocessed(threshold = 0.55, batchSize = 200): ClusterReport[] {
   getDb();
   const db = rawDb();
+  // Drop stale news before clustering: anything the source dated older than
+  // MAX_NEWS_AGE_HOURS (default 24h) is marked 'stale' so it's never rewritten.
+  // Covers items collected before the age filter existed. Null-dated items stay.
+  const maxAgeMs = Math.max(0, Number(process.env.MAX_NEWS_AGE_HOURS ?? 24)) * 3600_000;
+  if (maxAgeMs > 0) {
+    db.prepare(`UPDATE raw_items SET status='stale' WHERE status IN ('new','clustered') AND published_at IS NOT NULL AND published_at < ?`)
+      .run(Date.now() - maxAgeMs);
+  }
   const rows = db.prepare(
     `SELECT id, title, url, summary, html, image_url, published_at, cluster_id, minhash
      FROM raw_items WHERE status='new' ORDER BY id DESC LIMIT ?`
@@ -275,6 +283,41 @@ const _engineCooldownUntil = new Map<string, number>();
 const ENGINE_COOLDOWN_MS = Number(process.env.AI_ENGINE_COOLDOWN_MS ?? process.env.GEMINI_KEY_COOLDOWN_MS ?? 30 * 60_000);
 const isQuotaError = (msg: string): boolean => msg.includes('429') || /quota|rate.?limit|resource_exhausted|exhausted/i.test(msg);
 
+// ----- Per-engine usage tracker (app_meta, per local day) --------------------
+// Providers don't expose "remaining quota", so we track what we observe: per
+// engine (model+key, or Groq), how many calls succeeded vs hit 429 today.
+// Shared across processes (API scheduler + CLI) via app_meta; resets at midnight.
+interface EngineDayUsage { requests: number; errors429: number; last429At: number | null }
+function _engineUsageKey(): string { const d = new Date(); return `engine_usage_${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; }
+function _readEngineUsage(): Record<string, EngineDayUsage> {
+  try { const row = rawDb().prepare(`SELECT value FROM app_meta WHERE key=?`).get(_engineUsageKey()) as { value: string } | undefined; return row ? JSON.parse(row.value) : {}; }
+  catch { return {}; }
+}
+function _bumpEngine(id: string, patch: (u: EngineDayUsage) => void): void {
+  try {
+    getDb();
+    const all = _readEngineUsage();
+    const u = all[id] ?? { requests: 0, errors429: 0, last429At: null };
+    patch(u); all[id] = u;
+    rawDb().prepare(`INSERT INTO app_meta (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at`)
+      .run(_engineUsageKey(), JSON.stringify(all), Date.now());
+  } catch { /* never let tracking break a rewrite */ }
+}
+
+export interface EngineStat { id: string; provider: string; model: string; requestsToday: number; errors429Today: number; onCooldown: boolean }
+// Snapshot of every configured engine + today's usage. NOTE: requestsToday =
+// calls WE made (not provider-remaining, which isn't exposed). onCooldown=true
+// means it hit 429 and is being skipped (i.e. that key/model is exhausted now).
+export function getEngineStats(): EngineStat[] {
+  const usage = _readEngineUsage();
+  const now = Date.now();
+  return buildEngines().map((e) => {
+    const u = usage[e.id] ?? { requests: 0, errors429: 0, last429At: null };
+    const [provider, model] = e.id.split(':');
+    return { id: e.id, provider: provider ?? '', model: model ?? '', requestsToday: u.requests, errors429Today: u.errors429, onCooldown: (_engineCooldownUntil.get(e.id) ?? 0) > now };
+  });
+}
+
 // Run the cascade for one cluster. Skips engines on cooldown; on a quota error
 // the engine is cooled down and we fall to the next; on any other error we also
 // try the next engine. If every engine is on cooldown we surface a 429 so the
@@ -287,11 +330,15 @@ async function generateArticle(items: SourceItems): Promise<AIResult> {
   if (fresh.length === 0) throw new Error('AI quota 429: all engines on cooldown — will resume next tick');
   let lastErr: Error | null = null;
   for (const eng of fresh) {
+    _bumpEngine(eng.id, (u) => { u.requests++; });
     try {
       return await eng.call(items);
     } catch (e) {
       lastErr = e as Error;
-      if (isQuotaError(lastErr.message)) _engineCooldownUntil.set(eng.id, Date.now() + ENGINE_COOLDOWN_MS);
+      if (isQuotaError(lastErr.message)) {
+        _engineCooldownUntil.set(eng.id, Date.now() + ENGINE_COOLDOWN_MS);
+        _bumpEngine(eng.id, (u) => { u.errors429++; u.last429At = Date.now(); });
+      }
       // try the next engine regardless of error type
     }
   }

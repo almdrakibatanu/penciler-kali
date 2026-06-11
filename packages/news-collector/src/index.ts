@@ -141,9 +141,13 @@ function saveItems(sourceId: number, _category: string, items: ParsedItem[]): nu
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new')
   `);
   const now = Date.now();
+  // Skip stale news: if the source dates an item older than MAX_NEWS_AGE_HOURS
+  // (default 24h), don't take it. Items with no date are kept (age unknown).
+  const maxAgeMs = Math.max(0, Number(process.env.MAX_NEWS_AGE_HOURS ?? 24)) * 3600_000;
   const tx = db.transaction((list: ParsedItem[]) => {
     let inserted = 0;
     for (const it of list) {
+      if (maxAgeMs > 0 && it.publishedAt && now - it.publishedAt.getTime() > maxAgeMs) continue;
       const hash = createHash('sha1').update((it.title ?? '') + '|' + (it.summary ?? '')).digest('hex');
       const r = ins.run(
         sourceId,
