@@ -253,7 +253,7 @@ export async function stagePublishFb(max = 5): Promise<{ posted: number }> {
     SELECT a.id, a.slug, a.title, a.fb_caption
     FROM articles a
     LEFT JOIN posts p ON p.article_id = a.id AND p.channel='facebook' AND p.status IN ('success','dry_run')
-    WHERE a.status='published' AND p.id IS NULL
+    WHERE a.status='published' AND a.category != 'islamic' AND p.id IS NULL
     ORDER BY a.published_at DESC LIMIT ?
   `).all(max) as Array<{ id: number; slug: string; title: string; fb_caption: string | null }>;
   let posted = 0;

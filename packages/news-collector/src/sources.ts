@@ -50,9 +50,11 @@ export const DEFAULT_SOURCES: SourceDef[] = [
   { name: 'Hollywood Reporter', kind: 'rss', url: 'https://www.hollywoodreporter.com/feed/', category: 'binodon', lang: 'en' },
 
   // ---- Islamic ----
-  // Good Islamic RSS feeds are scarce; AboutIslam is the one reliable source.
-  // The AI rewriter also re-tags religious items from Bangla papers as islamic.
-  { name: 'AboutIslam',      kind: 'rss', url: 'https://aboutislam.net/feed/', category: 'islamic', lang: 'en' },
+  // Good Islamic RSS feeds are scarce. AboutIslam (RSS) + Muslims Day (HTML
+  // scrape — it has no feed) supply the Islamic section; the AI rewriter also
+  // re-tags religious items from Bangla papers as islamic.
+  { name: 'AboutIslam',      kind: 'rss',  url: 'https://aboutislam.net/feed/', category: 'islamic', lang: 'en' },
+  { name: 'Muslims Day',     kind: 'html', url: 'https://muslimsday.com/blog/', category: 'islamic', lang: 'bn' },
 
   // ---- YouTube specific channels (handled by youtube fetcher) ----
   { name: 'AMR World (channel)', kind: 'youtube', url: 'https://www.youtube.com/feeds/videos.xml?channel_id=PLACEHOLDER', category: 'binodon', lang: 'bn', enabled: false },

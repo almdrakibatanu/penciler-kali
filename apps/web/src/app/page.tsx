@@ -2,6 +2,7 @@ import { listArticles } from '@/lib/api';
 import { NewsCard } from '@/components/NewsCard';
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { Ads } from '@/components/Ads';
 
 export const revalidate = 60;
 
@@ -53,6 +54,7 @@ export default async function HomePage() {
           </section>
         );
       })}
+      <Ads />
     </div>
   );
 }

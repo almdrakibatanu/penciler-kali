@@ -2,6 +2,7 @@ import { listArticles } from '@/lib/api';
 import { NewsCard } from '@/components/NewsCard';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
+import { Ads } from '@/components/Ads';
 
 const LABEL: Record<string, string> = {
   bangladesh: 'বাংলাদেশ', bidesh: 'বিদেশ', kheladhula: 'খেলাধুলা',
@@ -33,6 +34,7 @@ export default async function CategoryPage({ params }: { params: { slug: string 
           {items.map((a) => <NewsCard key={a.id} a={a}/>)}
         </div>
       )}
+      <Ads category={params.slug} />
     </div>
   );
 }

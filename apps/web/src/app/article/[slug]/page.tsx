@@ -2,6 +2,7 @@ import { getArticle, formatBnDate } from '@/lib/api';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
+import { Ads } from '@/components/Ads';
 
 export const revalidate = 30;
 
@@ -64,6 +65,7 @@ export default async function ArticlePage({ params }: { params: { slug: string }
           </ul>
         </details>
       )}
+      <Ads category={a.category} />
     </article>
   );
 }

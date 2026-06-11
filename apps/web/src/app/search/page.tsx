@@ -1,5 +1,6 @@
 import { listArticles } from '@/lib/api';
 import { NewsCard } from '@/components/NewsCard';
+import { Ads } from '@/components/Ads';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,6 +25,7 @@ export default async function SearchPage({ searchParams }: { searchParams: { q?:
           {items.map((a) => <NewsCard key={a.id} a={a}/>)}
         </div>
       )}
+      <Ads />
     </div>
   );
 }

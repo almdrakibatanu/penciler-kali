@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { Ads } from '@/components/Ads';
 
 export const metadata: Metadata = { title: 'Contact Us — PencilerKali.com' };
 
@@ -12,6 +13,7 @@ export default function ContactPage() {
         <li>Facebook: <a target="_blank" rel="noopener" href="https://www.facebook.com/profile.php?id=100066384905135">@PencilerKali</a></li>
         <li>YouTube: <a target="_blank" rel="noopener" href="https://www.youtube.com/@AMRWorld-gd2sl">@AMRWorld-gd2sl</a></li>
       </ul>
+      <Ads />
     </div>
   );
 }

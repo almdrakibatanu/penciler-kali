@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { Ads } from '@/components/Ads';
 
 export const metadata: Metadata = {
   title: 'Privacy Policy — PencilerKali.com',
@@ -56,6 +57,7 @@ export default function PrivacyPage() {
 
       <h2>Contact</h2>
       <p>If you have any questions about this Privacy Policy, please reach us through the <a href="/contact">Contact</a> page.</p>
+      <Ads />
     </div>
   );
 }

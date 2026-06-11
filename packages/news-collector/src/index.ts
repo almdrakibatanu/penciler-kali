@@ -122,12 +122,18 @@ async function fetchHtml(url: string): Promise<ParsedItem[]> {
   if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${url}`);
   const $ = cheerio.load(await res.text());
   const items: ParsedItem[] = [];
-  // Heuristic: collect <article> and <a> linking to /news/ paths
-  $('article a, .news-item a, .card a, .headline a').each((_, el) => {
+  // Heuristic: collect post/article links. Includes WordPress-style blog
+  // markup (.post / .post-item / .entry-title) so sites without an RSS feed
+  // (e.g. muslimsday.com) can still be crawled.
+  const seen = new Set<string>();
+  $('article a, .news-item a, .card a, .headline a, .post a, .post-item a, .entry-title a').each((_, el) => {
     const href = $(el).attr('href');
     const title = $(el).text().trim();
     if (!href || !title || title.length < 12) return;
     const abs = new URL(href, url).toString();
+    // skip non-article links (pagination, taxonomy, feed) and de-dupe per page
+    if (/\/(feed|page|category|tag|author)\//i.test(abs) || seen.has(abs)) return;
+    seen.add(abs);
     items.push({ title, url: abs });
   });
   return items;

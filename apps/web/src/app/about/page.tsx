@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { Ads } from '@/components/Ads';
 
 export const metadata: Metadata = {
   title: 'About Us — PencilerKali.com',
@@ -31,6 +32,7 @@ export default function AboutPage() {
       <p>For corrections, takedown requests, partnerships, or advertising inquiries, please reach us through the <a href="/contact">Contact</a> page or by email. We aim to respond within two business days.</p>
 
       <p className="text-sm text-ink-500 mt-8">Some profile details on this page are placeholders during our public launch and will be updated as soon as our editorial team finalises the published version.</p>
+      <Ads />
     </div>
   );
 }

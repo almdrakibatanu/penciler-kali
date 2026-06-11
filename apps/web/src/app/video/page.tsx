@@ -1,4 +1,5 @@
 import { listVideos } from '@/lib/api';
+import { Ads } from '@/components/Ads';
 
 export const revalidate = 60;
 
@@ -24,6 +25,7 @@ export default async function VideoPage() {
           ))}
         </div>
       )}
+      <Ads />
     </div>
   );
 }

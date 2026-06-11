@@ -2,7 +2,6 @@ import type { Metadata } from 'next';
 import './globals.css';
 import Link from 'next/link';
 import Script from 'next/script';
-import { AdsterraGlobal, AdsterraNativeBanner } from '@/components/Adsterra';
 
 // Google Analytics 4 — only loads when NEXT_PUBLIC_GA_ID is set in .env.
 const GA_ID = process.env.NEXT_PUBLIC_GA_ID;
@@ -71,9 +70,6 @@ gtag('config', '${GA_ID}');`}
 
         <main className="flex-1">{children}</main>
 
-        {/* Adsterra Native Banner — shown on every page, between content and footer */}
-        <AdsterraNativeBanner />
-
         <footer className="mt-12 border-t border-slate-200 bg-white">
           <div className="max-w-6xl mx-auto px-4 py-8 grid md:grid-cols-4 gap-6 text-sm">
             <div>
@@ -104,9 +100,6 @@ gtag('config', '${GA_ID}');`}
           </div>
           <div className="border-t border-slate-200 py-4 text-center text-xs text-ink-500">© {new Date().getFullYear()} PencilerKali.com — সকল অধিকার সংরক্ষিত।</div>
         </footer>
-
-        {/* Adsterra Popunder + Social Bar — fire on every page */}
-        <AdsterraGlobal />
       </body>
     </html>
   );
