@@ -1,8 +1,8 @@
 import { listArticles } from '@/lib/api';
-import { NewsCard } from '@/components/NewsCard';
+import { LoadMore } from '@/components/LoadMore';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { Ads } from '@/components/Ads';
+import { Ads, BannerAd } from '@/components/Ads';
 
 const LABEL: Record<string, string> = {
   bangladesh: 'বাংলাদেশ', bidesh: 'বিদেশ', kheladhula: 'খেলাধুলা',
@@ -25,14 +25,13 @@ export default async function CategoryPage({ params }: { params: { slug: string 
   if (!LABEL[params.slug]) notFound();
   const { items } = await listArticles({ category: params.slug, limit: 30 });
   return (
-    <div className="max-w-6xl mx-auto px-4 py-6">
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-12 py-6">
+      <BannerAd category={params.slug} />
       <h1 className="font-head font-bold text-3xl mb-6">{LABEL[params.slug]}</h1>
       {items.length === 0 ? (
         <p className="text-ink-500">এই বিভাগে এখনো কোনো প্রবন্ধ নেই।</p>
       ) : (
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-          {items.map((a) => <NewsCard key={a.id} a={a}/>)}
-        </div>
+        <LoadMore category={params.slug} initial={items} pageSize={30} />
       )}
       <Ads category={params.slug} />
     </div>

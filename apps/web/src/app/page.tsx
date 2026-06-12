@@ -2,7 +2,7 @@ import { listArticles } from '@/lib/api';
 import { NewsCard } from '@/components/NewsCard';
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { Ads } from '@/components/Ads';
+import { Ads, BannerAd } from '@/components/Ads';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,7 +24,8 @@ export default async function HomePage() {
   const hero = all.items[0];
   const top = all.items.slice(1, 5);
   return (
-    <div className="max-w-6xl mx-auto px-4 py-6">
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-12 py-6">
+      <BannerAd />
       {hero ? (
         <section className="grid md:grid-cols-3 gap-5">
           <div className="md:col-span-2"><NewsCard a={hero} size="lg"/></div>
@@ -38,6 +39,8 @@ export default async function HomePage() {
           কোনো প্রবন্ধ পাওয়া যায়নি। `npm run seed` চালান, এরপর `npm run -w @pk/api cli collect` দিয়ে সংবাদ সংগ্রহ শুরু করুন।
         </div>
       )}
+
+      <BannerAd />
 
       {CATS.map((c, i) => {
         const items = byCat[i]?.items ?? [];

@@ -25,3 +25,27 @@ export function AdsterraNativeBanner({ className = '' }: { className?: string })
     </div>
   );
 }
+
+// 468x60 iframe Banner. Adsterra's iframe banners set a GLOBAL `atOptions` and
+// then load invoke.js which reads it — so two on the same page would clobber
+// each other. We isolate each banner inside its own srcDoc iframe, giving every
+// instance a private global scope. Safe to render multiple times per page.
+const BANNER_KEY = 'd8b0648080d07b13eed5bc2f0b29e76e';
+const BANNER_SRCDOC = `<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;padding:0;overflow:hidden;display:flex;justify-content:center;align-items:center;background:transparent}</style></head><body><script type="text/javascript">atOptions={'key':'${BANNER_KEY}','format':'iframe','height':60,'width':468,'params':{}};<\/script><script type="text/javascript" src="https://www.highperformanceformat.com/${BANNER_KEY}/invoke.js"><\/script></body></html>`;
+
+export function AdsterraBanner({ className = '' }: { className?: string }) {
+  if (!ADS_ENABLED) return null;
+  return (
+    <div className={`flex justify-center my-6 ${className}`}>
+      <iframe
+        srcDoc={BANNER_SRCDOC}
+        width={468}
+        height={60}
+        scrolling="no"
+        title="advertisement"
+        className="max-w-full"
+        style={{ border: 0, overflow: 'hidden' }}
+      />
+    </div>
+  );
+}

@@ -2,7 +2,7 @@ import { getArticle, formatBnDate } from '@/lib/api';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { Ads } from '@/components/Ads';
+import { Ads, BannerAd } from '@/components/Ads';
 
 export const revalidate = 30;
 
@@ -44,7 +44,8 @@ export default async function ArticlePage({ params }: { params: { slug: string }
   const ts = a.published_at ?? a.created_at;
   const sources = parseSources(a.source_urls);
   return (
-    <article className="max-w-3xl mx-auto px-4 py-8">
+    <article className="max-w-3xl mx-auto px-4 sm:px-6 py-8">
+      <BannerAd category={a.category} />
       <Link href={`/c/${a.category}`} className="text-sm text-brand-600 font-semibold">{CAT_LABEL[a.category] ?? a.category}</Link>
       <h1 className="font-head font-bold text-3xl md:text-4xl mt-2 leading-tight">{a.title}</h1>
       {a.subtitle && <p className="text-lg text-ink-700 mt-2">{a.subtitle}</p>}
