@@ -33,6 +33,17 @@ export function InlineAd({ category, size = '300x250' }: { category?: string; si
   );
 }
 
+// A centered row of one or more banners (wraps on small screens). Use between
+// content sections so a tall ad never unbalances a grid column.
+export function AdRow({ category, sizes }: { category?: string; sizes: BannerSize[] }) {
+  if (category === 'islamic') return null;
+  return (
+    <div className="flex flex-wrap justify-center items-start gap-4 my-6">
+      {sizes.map((s, i) => <AdsterraBanner key={`${s}-${i}`} size={s} />)}
+    </div>
+  );
+}
+
 // Fixed left + right skyscrapers in the empty gutters beside the centered content
 // (max-w-5xl ≈ 1024px). Only shown ≥1400px wide, where each gutter clears 160px;
 // hidden on everything narrower so they never overlap the content.

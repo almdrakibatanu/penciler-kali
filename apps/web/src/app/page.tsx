@@ -2,7 +2,7 @@ import { listArticles } from '@/lib/api';
 import { NewsCard } from '@/components/NewsCard';
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { Ads, TopBanner, InlineAd, AdRails } from '@/components/Ads';
+import { Ads, TopBanner, AdRow, AdRails } from '@/components/Ads';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,15 +28,11 @@ export default async function HomePage() {
       <AdRails />
       <TopBanner />
       {hero ? (
-        <section className="grid md:grid-cols-3 gap-5">
+        <section className="grid md:grid-cols-3 gap-5 items-start">
           <div className="md:col-span-2"><NewsCard a={hero} size="lg"/></div>
-          <aside className="flex flex-col gap-4">
-            <div className="bg-white rounded-xl divide-y divide-slate-100">
-              <h2 className="px-4 pt-3 pb-1 text-sm font-semibold text-ink-500">সর্বাধিক পঠিত</h2>
-              {top.map((a) => <NewsCard key={a.id} a={a} size="sm"/>)}
-            </div>
-            <InlineAd size="300x250" />
-            <InlineAd size="160x300" />
+          <aside className="bg-white rounded-xl divide-y divide-slate-100">
+            <h2 className="px-4 pt-3 pb-1 text-sm font-semibold text-ink-500">সর্বাধিক পঠিত</h2>
+            {top.map((a) => <NewsCard key={a.id} a={a} size="sm"/>)}
           </aside>
         </section>
       ) : (
@@ -45,7 +41,7 @@ export default async function HomePage() {
         </div>
       )}
 
-      <InlineAd size="468x60" />
+      <AdRow sizes={['300x250', '160x300']} />
 
       {CATS.map((c, i) => {
         const items = byCat[i]?.items ?? [];
