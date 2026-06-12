@@ -9,7 +9,7 @@ const LABEL: Record<string, string> = {
   binodon: 'বিনোদন', islamic: 'ইসলামিক',
 };
 
-export const revalidate = 60;
+export const dynamic = 'force-dynamic';
 
 export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
   const label = LABEL[params.slug];

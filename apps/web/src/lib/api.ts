@@ -17,7 +17,7 @@ export interface Article extends ArticleListItem {
 // non-JSON body (e.g. an HTML error/placeholder page) instead of throwing.
 // Critical during `next build` prerender, when the API may not be reachable yet
 // — without this the page render crashes on `r.json()` of an HTML response.
-async function fetchJson<T>(url: string | URL, opts: { next?: { revalidate?: number } }, fallback: T): Promise<T> {
+async function fetchJson<T>(url: string | URL, opts: RequestInit & { next?: { revalidate?: number } }, fallback: T): Promise<T> {
   try {
     const r = await fetch(url, opts as RequestInit);
     if (!r.ok) return fallback;
@@ -32,7 +32,8 @@ async function fetchJson<T>(url: string | URL, opts: { next?: { revalidate?: num
 export async function listArticles(opts: { category?: string; q?: string; limit?: number; offset?: number } = {}): Promise<{ items: ArticleListItem[] }> {
   const u = new URL(`${BASE}/api/articles`);
   for (const [k, v] of Object.entries(opts)) if (v !== undefined) u.searchParams.set(k, String(v));
-  return fetchJson(u, { next: { revalidate: 60 } }, { items: [] as ArticleListItem[] });
+  // News listings must be live — never serve a cached article list.
+  return fetchJson(u, { cache: 'no-store' }, { items: [] as ArticleListItem[] });
 }
 
 export async function getArticle(slug: string): Promise<Article | null> {

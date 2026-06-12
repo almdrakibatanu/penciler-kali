@@ -24,7 +24,6 @@ const NAV = [
   { href: '/c/kheladhula',      label: 'খেলাধুলা' },
   { href: '/c/binodon',         label: 'বিনোদন' },
   { href: '/c/islamic',         label: 'ইসলামিক' },
-  { href: '/video',             label: 'ভিডিও' },
 ];
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
