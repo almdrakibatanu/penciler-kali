@@ -2,7 +2,7 @@ import { getArticle, formatBnDate } from '@/lib/api';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { Ads, BannerAd } from '@/components/Ads';
+import { Ads, TopBanner, InlineAd, AdRails } from '@/components/Ads';
 
 export const revalidate = 30;
 
@@ -45,7 +45,8 @@ export default async function ArticlePage({ params }: { params: { slug: string }
   const sources = parseSources(a.source_urls);
   return (
     <article className="max-w-3xl mx-auto px-4 sm:px-6 py-8">
-      <BannerAd category={a.category} />
+      <AdRails category={a.category} />
+      <TopBanner category={a.category} />
       <Link href={`/c/${a.category}`} className="text-sm text-brand-600 font-semibold">{CAT_LABEL[a.category] ?? a.category}</Link>
       <h1 className="font-head font-bold text-3xl md:text-4xl mt-2 leading-tight">{a.title}</h1>
       {a.subtitle && <p className="text-lg text-ink-700 mt-2">{a.subtitle}</p>}
@@ -54,7 +55,13 @@ export default async function ArticlePage({ params }: { params: { slug: string }
         <img src={a.thumbnail_url ?? a.hero_image_url ?? ''} alt={a.title} className="my-6 rounded-xl w-full object-cover aspect-[16/9]"/>
       )}
       <div className="prose-bn text-[1.05rem]">
-        {(a.body ?? '').split(/\n\n+/).map((p, i) => <p key={i}>{p}</p>)}
+        {(a.body ?? '').split(/\n\n+/).map((p, i, arr) => (
+          <div key={i}>
+            <p>{p}</p>
+            {/* one in-article rectangle, after the 3rd paragraph (only if the article is long enough) */}
+            {i === 2 && arr.length > 4 && <InlineAd size="300x250" category={a.category} />}
+          </div>
+        ))}
       </div>
       {sources.length > 0 && (
         <details className="mt-8 border-t border-slate-200 pt-4">

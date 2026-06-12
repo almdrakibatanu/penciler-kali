@@ -2,7 +2,7 @@ import { listArticles } from '@/lib/api';
 import { LoadMore } from '@/components/LoadMore';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { Ads, BannerAd } from '@/components/Ads';
+import { Ads, TopBanner, InlineAd, AdRails } from '@/components/Ads';
 
 const LABEL: Record<string, string> = {
   bangladesh: 'বাংলাদেশ', bidesh: 'বিদেশ', kheladhula: 'খেলাধুলা',
@@ -26,13 +26,15 @@ export default async function CategoryPage({ params }: { params: { slug: string 
   const { items } = await listArticles({ category: params.slug, limit: 30 });
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-12 py-6">
-      <BannerAd category={params.slug} />
+      <AdRails category={params.slug} />
+      <TopBanner category={params.slug} />
       <h1 className="font-head font-bold text-3xl mb-6">{LABEL[params.slug]}</h1>
       {items.length === 0 ? (
         <p className="text-ink-500">এই বিভাগে এখনো কোনো প্রবন্ধ নেই।</p>
       ) : (
         <LoadMore category={params.slug} initial={items} pageSize={30} />
       )}
+      <InlineAd size="300x250" category={params.slug} />
       <Ads category={params.slug} />
     </div>
   );
