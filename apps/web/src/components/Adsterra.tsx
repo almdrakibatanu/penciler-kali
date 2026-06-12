@@ -5,27 +5,9 @@ import Script from 'next/script';
 // page gets them.
 const ADS_ENABLED = process.env.NEXT_PUBLIC_ADS_ENABLED !== 'false';
 
-// Popunder (one per page) + Social Bar — placement-agnostic global scripts.
-// Rendered once in the root layout so they fire on every page load.
-export function AdsterraGlobal() {
-  if (!ADS_ENABLED) return null;
-  return (
-    <>
-      {/* Popunder — one per page */}
-      <Script
-        id="adsterra-popunder"
-        strategy="afterInteractive"
-        src="https://pl29657549.effectivecpmnetwork.com/18/4d/2d/184d2d164d87ea9fcf06b3fd3c64eaad.js"
-      />
-      {/* Social Bar */}
-      <Script
-        id="adsterra-social-bar"
-        strategy="afterInteractive"
-        src="https://pl29657551.effectivecpmnetwork.com/51/94/39/519439b4ff08cb58751a09c3d32bcebb.js"
-      />
-    </>
-  );
-}
+// Popunder + Social Bar are intentionally DISABLED (too intrusive: the popunder
+// hijacks any click, the social bar is a sticky overlay). Only the contained
+// native banner below is used. Don't re-add them without a deliberate decision.
 
 // Native Banner — renders inline wherever it's placed; the invoke script fills
 // the container div below it. Keep a single instance per page (unique div id).
