@@ -3,6 +3,8 @@ import './globals.css';
 import Link from 'next/link';
 import Script from 'next/script';
 import { JsonLd } from '@/components/JsonLd';
+import { PushSubscribe } from '@/components/PushSubscribe';
+import { BreakingTicker } from '@/components/BreakingTicker';
 import { SITE_URL, SITE_NAME, SITE_DESC, LOGO_URL, SOCIAL } from '@/lib/site';
 
 // Google Analytics 4 — only loads when NEXT_PUBLIC_GA_ID is set in .env.
@@ -84,8 +86,9 @@ gtag('config', '${GA_ID}');`}
               ))}
             </nav>
             <form action="/search" className="ml-auto flex items-center gap-2">
-              <input name="q" placeholder="অনুসন্ধান…" className="w-44 md:w-64 rounded-md border border-slate-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/40"/>
+              <input name="q" placeholder="অনুসন্ধান…" className="w-36 md:w-56 rounded-md border border-slate-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/40"/>
             </form>
+            <PushSubscribe />
           </div>
           <nav className="md:hidden border-t border-slate-100 overflow-x-auto">
             <div className="flex gap-1 px-2 py-1">
@@ -95,6 +98,8 @@ gtag('config', '${GA_ID}');`}
             </div>
           </nav>
         </header>
+
+        <BreakingTicker />
 
         <main className="flex-1">{children}</main>
 

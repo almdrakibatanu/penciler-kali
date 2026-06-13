@@ -17,12 +17,17 @@ const CATS: Array<{ slug: string; label: string }> = [
 ];
 
 export default async function HomePage() {
-  const [all, ...byCat] = await Promise.all([
+  const [all, mostRead, ...byCat] = await Promise.all([
     listArticles({ limit: 12 }),
+    listArticles({ sort: 'views', limit: 6 }),
     ...CATS.map((c) => listArticles({ category: c.slug, limit: 6 })),
   ]);
   const hero = all.items[0];
-  const top = all.items.slice(1, 5);
+  // "সর্বাধিক পঠিত" = top by real view count (falls back to recent on a fresh DB
+  // where every view count is 0). Drop the hero so it isn't listed twice.
+  const top = (mostRead.items.length ? mostRead.items : all.items)
+    .filter((a) => a.id !== hero?.id)
+    .slice(0, 4);
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-12 py-6">
       <AdRails />

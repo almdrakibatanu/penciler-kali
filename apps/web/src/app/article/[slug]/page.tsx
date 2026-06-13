@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { Ads, TopBanner, InlineAd, AdRails } from '@/components/Ads';
 import { NewsCard } from '@/components/NewsCard';
+import { ShareButtons } from '@/components/ShareButtons';
 import { JsonLd } from '@/components/JsonLd';
 import { SITE_URL, AUTHOR_NAME, CATEGORY_LABEL, PUBLISHER } from '@/lib/site';
 
@@ -113,6 +114,7 @@ export default async function ArticlePage({ params }: { params: { slug: string }
       {(a.thumbnail_url ?? a.hero_image_url) && (
         <img src={a.thumbnail_url ?? a.hero_image_url ?? ''} alt={a.title} className="my-6 rounded-xl w-full object-cover aspect-[16/9]"/>
       )}
+      <ShareButtons url={url} title={a.title} />
       <div className="prose-bn text-[1.05rem]">
         {(a.body ?? '').split(/\n\n+/).map((p, i, arr) => (
           <div key={i}>

@@ -10,6 +10,7 @@ import { configure as configureCloud, getAsset, renderTransform, verifyTransform
 import { queueStats } from '@pk/pencil-queue';
 import { getGeminiUsage, getGroqUsage, geminiKeys, getEngineStats } from '@pk/ai-rewriter';
 import { startScheduler } from './scheduler.js';
+import { pushEnabled, getPublicKey, saveSubscription, removeSubscription, type PushSubscriptionJSON } from './push.js';
 
 // ----------------------------------------------------------------------------
 // Backend API server.
@@ -43,10 +44,10 @@ app.get('/api/categories', async () => ([
 ]));
 
 app.get('/api/articles', async (req) => {
-  const q = req.query as { category?: string; limit?: string; offset?: string; q?: string };
+  const q = req.query as { category?: string; limit?: string; offset?: string; q?: string; sort?: string };
   const limit = Math.min(60, Math.max(1, Number(q.limit ?? 20)));
   const offset = Math.max(0, Number(q.offset ?? 0));
-  let sql = `SELECT id, slug, title, summary, category, tags, hero_image_url, thumbnail_url, published_at, created_at
+  let sql = `SELECT id, slug, title, summary, category, tags, hero_image_url, thumbnail_url, published_at, created_at, views
              FROM articles WHERE status='published'`;
   const params: unknown[] = [];
   if (q.category) { sql += ` AND category=?`; params.push(q.category); }
@@ -56,10 +57,32 @@ app.get('/api/articles', async (req) => {
     sql += ` AND (title LIKE ? ESCAPE '\\' OR summary LIKE ? ESCAPE '\\')`;
     params.push(`%${esc}%`, `%${esc}%`);
   }
-  sql += ` ORDER BY COALESCE(published_at, created_at) DESC LIMIT ? OFFSET ?`;
+  // sort=views powers the "most read" / trending block; default is newest-first.
+  sql += q.sort === 'views'
+    ? ` ORDER BY views DESC, COALESCE(published_at, created_at) DESC LIMIT ? OFFSET ?`
+    : ` ORDER BY COALESCE(published_at, created_at) DESC LIMIT ? OFFSET ?`;
   params.push(limit, offset);
   const rows = rawDb().prepare(sql).all(...params);
   return { items: rows, limit, offset };
+});
+
+// ----- web push (VAPID) ----------------------------------------------------
+
+app.get('/api/push/key', async () => ({ enabled: pushEnabled(), publicKey: getPublicKey() }));
+
+app.post('/api/push/subscribe', async (req, reply) => {
+  try {
+    saveSubscription(req.body as PushSubscriptionJSON);
+    return { ok: true };
+  } catch (e) {
+    reply.code(400); return { error: (e as Error).message };
+  }
+});
+
+app.post('/api/push/unsubscribe', async (req) => {
+  const { endpoint } = (req.body ?? {}) as { endpoint?: string };
+  if (endpoint) removeSubscription(endpoint);
+  return { ok: true };
 });
 
 app.get('/api/articles/:slug', async (req, reply) => {

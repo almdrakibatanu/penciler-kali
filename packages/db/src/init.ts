@@ -120,6 +120,14 @@ const DDL = [
     value TEXT NOT NULL,
     updated_at INTEGER NOT NULL
   )`,
+  // Web Push (VAPID) subscriptions — one row per browser that opted in. Keyed by
+  // the push endpoint so re-subscribing is idempotent (INSERT OR REPLACE).
+  `CREATE TABLE IF NOT EXISTS push_subscriptions (
+    endpoint TEXT PRIMARY KEY,
+    p256dh TEXT NOT NULL,
+    auth TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  )`,
 ];
 
 export function initSchema(): void {

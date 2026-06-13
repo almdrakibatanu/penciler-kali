@@ -5,6 +5,7 @@ export interface ArticleListItem {
   category: string; tags: string | null; hero_image_url: string | null;
   thumbnail_url?: string | null;
   published_at: number | null; created_at: number;
+  views?: number;
 }
 export interface Article extends ArticleListItem {
   body: string; subtitle: string | null;
@@ -29,7 +30,7 @@ async function fetchJson<T>(url: string | URL, opts: RequestInit & { next?: { re
   }
 }
 
-export async function listArticles(opts: { category?: string; q?: string; limit?: number; offset?: number } = {}): Promise<{ items: ArticleListItem[] }> {
+export async function listArticles(opts: { category?: string; q?: string; limit?: number; offset?: number; sort?: 'recent' | 'views' } = {}): Promise<{ items: ArticleListItem[] }> {
   const u = new URL(`${BASE}/api/articles`);
   for (const [k, v] of Object.entries(opts)) if (v !== undefined) u.searchParams.set(k, String(v));
   // News listings must be live — never serve a cached article list.

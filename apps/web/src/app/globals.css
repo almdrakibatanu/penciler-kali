@@ -16,3 +16,10 @@ h1, h2, h3 { font-family: "Noto Serif Bengali", "Hind Siliguri", serif; letter-s
 .prose-bn p { line-height: 1.85; margin: 0 0 1rem; }
 .prose-bn h2 { margin: 1.6rem 0 0.6rem; font-size: 1.45rem; }
 .prose-bn h3 { margin: 1.2rem 0 0.4rem; font-size: 1.2rem; }
+
+/* Breaking-news ticker marquee. The track holds the headlines twice, so sliding
+   it left by 50% lands exactly on the duplicate — a seamless loop. */
+@keyframes marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.animate-marquee { animation: marquee 40s linear infinite; }
+.animate-marquee:hover { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) { .animate-marquee { animation: none; } }

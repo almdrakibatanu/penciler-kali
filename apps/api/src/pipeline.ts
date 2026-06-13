@@ -6,6 +6,7 @@ import { renderVideo } from '@pk/pencil-video';
 import { postToPage } from '@pk/publisher-fb';
 import { uploadVideo } from '@pk/publisher-yt';
 import { pingIndexNow, articleUrl } from './seo-ping.js';
+import { sendPushToAll } from './push.js';
 
 // ----------------------------------------------------------------------------
 // One stage = one box in the architecture diagram. Each is idempotent and
@@ -150,7 +151,7 @@ export async function stageRewrite(
   const delayMs = Number(process.env.REWRITE_DELAY_MS ?? 4000);
 
   let articles = 0, flagged = 0, skipped = 0, quotaHit = false;
-  const publishedUrls: string[] = [];
+  const published: Array<{ title: string; url: string }> = [];
   for (const { cluster_id } of pending) {
     try {
       const out: RewriteOutput = await rewriteCluster({ clusterId: cluster_id });
@@ -159,7 +160,7 @@ export async function stageRewrite(
       // auto-publish clean drafts (not flagged) so the homepage gets fresh data
       if (out.status === 'draft') {
         db.prepare(`UPDATE articles SET status='published', published_at=? WHERE id=?`).run(Date.now(), id);
-        publishedUrls.push(articleUrl(out.slug)); // notify IndexNow after the batch
+        published.push({ title: out.title, url: articleUrl(out.slug) }); // for IndexNow + push
       }
       // Build the thumbnail immediately so every new article has an image right
       // away. Use the cluster's image if present, else pull the source article's
@@ -187,7 +188,22 @@ export async function stageRewrite(
   }
   // Submit freshly-published URLs to IndexNow (Bing/Yandex). No-op unless
   // INDEXNOW_ENABLED=true; never blocks the pipeline on failure.
-  await pingIndexNow(publishedUrls);
+  await pingIndexNow(published.map((p) => p.url));
+  // Notify web-push subscribers. No-op unless VAPID keys are set. Send at most a
+  // few individual alerts per tick; collapse a larger burst into one summary so
+  // we never spam someone's lock screen with a dozen notifications at once.
+  if (published.length <= 3) {
+    for (const p of published) {
+      await sendPushToAll({ title: p.title, body: 'PencilerKali.com — নতুন সংবাদ', url: p.url, icon: '/logo' });
+    }
+  } else if (published.length > 0) {
+    await sendPushToAll({
+      title: `${published.length}টি নতুন সংবাদ প্রকাশিত হয়েছে`,
+      body: 'সর্বশেষ খবর পড়তে ভিজিট করুন',
+      url: `${(process.env.SITE_URL ?? process.env.NEXT_PUBLIC_SITE_URL ?? 'https://pencilerkali.com').replace(/\/+$/, '')}/`,
+      icon: '/logo',
+    });
+  }
   return { articles, flagged, skipped, pending: pendingTotal, quotaHit };
 }
 
