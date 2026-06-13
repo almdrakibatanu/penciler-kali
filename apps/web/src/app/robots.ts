@@ -11,7 +11,7 @@ export default function robots(): MetadataRoute.Robots {
       // /search is query-param driven (?q=…) — infinite URL space, no SEO value.
       disallow: ['/search'],
     },
-    sitemap: `${SITE}/sitemap.xml`,
+    sitemap: [`${SITE}/sitemap.xml`, `${SITE}/news-sitemap.xml`],
     host: SITE,
   };
 }

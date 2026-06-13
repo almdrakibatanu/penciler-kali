@@ -2,19 +2,47 @@ import type { Metadata } from 'next';
 import './globals.css';
 import Link from 'next/link';
 import Script from 'next/script';
+import { JsonLd } from '@/components/JsonLd';
+import { SITE_URL, SITE_NAME, SITE_DESC, LOGO_URL, SOCIAL } from '@/lib/site';
 
 // Google Analytics 4 — only loads when NEXT_PUBLIC_GA_ID is set in .env.
 const GA_ID = process.env.NEXT_PUBLIC_GA_ID;
 
 export const metadata: Metadata = {
   title: { default: 'PencilerKali.com — বাংলাদেশের AI সংবাদ পোর্টাল', template: '%s — PencilerKali.com' },
-  description: 'বাংলাদেশ, বিদেশ, খেলাধুলা, বিনোদন ও ইসলামিক সংবাদের AI-চালিত সম্পূর্ণ স্বয়ংক্রিয় বাংলা প্ল্যাটফর্ম।',
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? 'https://pencilerkali.com'),
-  openGraph: { siteName: 'PencilerKali.com', locale: 'bn_BD', type: 'website' },
+  description: SITE_DESC,
+  metadataBase: new URL(SITE_URL),
+  openGraph: { siteName: SITE_NAME, locale: 'bn_BD', type: 'website' },
+  twitter: { card: 'summary_large_image' },
+  icons: { icon: '/logo', shortcut: '/logo', apple: '/logo' },
   // NOTE: no global `canonical` here — a blanket '/' makes every page declare
   // itself a duplicate of the homepage, so Facebook/Google scrape the homepage
   // instead of the article. Each page sets its own canonical below.
   robots: { index: true, follow: true },
+};
+
+// Site-wide structured data: who publishes this (Organization) and a sitelinks
+// search box (WebSite). Rendered once in the layout so it's on every page.
+const ORG_JSONLD = {
+  '@context': 'https://schema.org',
+  '@type': 'NewsMediaOrganization',
+  name: SITE_NAME,
+  url: SITE_URL,
+  logo: { '@type': 'ImageObject', url: LOGO_URL, width: 512, height: 512 },
+  description: SITE_DESC,
+  sameAs: [SOCIAL.facebook, SOCIAL.youtube],
+};
+const WEBSITE_JSONLD = {
+  '@context': 'https://schema.org',
+  '@type': 'WebSite',
+  name: SITE_NAME,
+  url: SITE_URL,
+  inLanguage: 'bn-BD',
+  potentialAction: {
+    '@type': 'SearchAction',
+    target: { '@type': 'EntryPoint', urlTemplate: `${SITE_URL}/search?q={search_term_string}` },
+    'query-input': 'required name=search_term_string',
+  },
 };
 
 const NAV = [
@@ -30,6 +58,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="bn">
       <body className="min-h-screen flex flex-col bg-slate-50 text-ink-900">
+        <JsonLd data={[ORG_JSONLD, WEBSITE_JSONLD]} />
         {GA_ID && (
           <>
             <Script src={`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`} strategy="afterInteractive" />
@@ -85,6 +114,7 @@ gtag('config', '${GA_ID}');`}
               <div className="font-semibold mb-2">সাইট</div>
               <ul className="space-y-1 text-ink-700">
                 <li><Link href="/about" className="hover:text-brand-600">About Us</Link></li>
+                <li><Link href="/editorial-policy" className="hover:text-brand-600">Editorial Policy</Link></li>
                 <li><Link href="/privacy" className="hover:text-brand-600">Privacy Policy</Link></li>
                 <li><Link href="/contact" className="hover:text-brand-600">Contact Us</Link></li>
               </ul>

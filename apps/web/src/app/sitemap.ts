@@ -31,9 +31,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const staticRoutes: MetadataRoute.Sitemap = [
     { url: `${SITE}/`,        lastModified: now, changeFrequency: 'hourly', priority: 1.0 },
     { url: `${SITE}/video`,   lastModified: now, changeFrequency: 'daily',  priority: 0.6 },
-    { url: `${SITE}/about`,   changeFrequency: 'yearly', priority: 0.3 },
-    { url: `${SITE}/contact`, changeFrequency: 'yearly', priority: 0.3 },
-    { url: `${SITE}/privacy`, changeFrequency: 'yearly', priority: 0.3 },
+    { url: `${SITE}/about`,            changeFrequency: 'yearly', priority: 0.3 },
+    { url: `${SITE}/editorial-policy`, changeFrequency: 'yearly', priority: 0.3 },
+    { url: `${SITE}/contact`,          changeFrequency: 'yearly', priority: 0.3 },
+    { url: `${SITE}/privacy`,          changeFrequency: 'yearly', priority: 0.3 },
   ];
 
   const categoryRoutes: MetadataRoute.Sitemap = CATEGORIES.map((slug) => ({

@@ -5,6 +5,7 @@ import { buildNewsThumbnail, tryBuildThumbnail } from '@pk/pencil-cloud';
 import { renderVideo } from '@pk/pencil-video';
 import { postToPage } from '@pk/publisher-fb';
 import { uploadVideo } from '@pk/publisher-yt';
+import { pingIndexNow, articleUrl } from './seo-ping.js';
 
 // ----------------------------------------------------------------------------
 // One stage = one box in the architecture diagram. Each is idempotent and
@@ -149,6 +150,7 @@ export async function stageRewrite(
   const delayMs = Number(process.env.REWRITE_DELAY_MS ?? 4000);
 
   let articles = 0, flagged = 0, skipped = 0, quotaHit = false;
+  const publishedUrls: string[] = [];
   for (const { cluster_id } of pending) {
     try {
       const out: RewriteOutput = await rewriteCluster({ clusterId: cluster_id });
@@ -157,6 +159,7 @@ export async function stageRewrite(
       // auto-publish clean drafts (not flagged) so the homepage gets fresh data
       if (out.status === 'draft') {
         db.prepare(`UPDATE articles SET status='published', published_at=? WHERE id=?`).run(Date.now(), id);
+        publishedUrls.push(articleUrl(out.slug)); // notify IndexNow after the batch
       }
       // Build the thumbnail immediately so every new article has an image right
       // away. Use the cluster's image if present, else pull the source article's
@@ -182,6 +185,9 @@ export async function stageRewrite(
     }
     if (delayMs > 0) await new Promise((r) => setTimeout(r, delayMs));
   }
+  // Submit freshly-published URLs to IndexNow (Bing/Yandex). No-op unless
+  // INDEXNOW_ENABLED=true; never blocks the pipeline on failure.
+  await pingIndexNow(publishedUrls);
   return { articles, flagged, skipped, pending: pendingTotal, quotaHit };
 }
 
