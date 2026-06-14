@@ -1,18 +1,13 @@
-import { AdsterraBanner, type BannerSize } from './Adsterra';
+import { AdsterraNativeBanner, AdsterraBanner, type BannerSize } from './Adsterra';
 
 // All ad slots skip the Islamic section entirely (pass category='islamic' or the
-// article's category). Every unit is a SANDBOXED iframe banner — the Popunder,
-// Social Bar, and in-page Native Banner script (all redirect/hijack risks) are
-// removed site-wide (see Adsterra.tsx).
+// article's category). All formats are enabled EXCEPT Popunder + Social Bar
+// (the click-hijacking ones), which are removed site-wide (see Adsterra.tsx).
 
-// Bottom-of-page banner.
+// Bottom-of-page native banner.
 export function Ads({ category }: { category?: string }) {
   if (category === 'islamic') return null;
-  return (
-    <div className="flex justify-center my-6">
-      <AdsterraBanner size="300x250" />
-    </div>
-  );
+  return <AdsterraNativeBanner />;
 }
 
 // Top-of-page leaderboard: 728x90 on desktop, 320x50 on phones (one shows at a

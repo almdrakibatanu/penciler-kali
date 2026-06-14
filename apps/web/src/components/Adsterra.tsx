@@ -1,16 +1,39 @@
+import Script from 'next/script';
+
 // Adsterra ad units. On by default everywhere; set NEXT_PUBLIC_ADS_ENABLED=false
-// to turn them off (kill switch — use it if ads start hijacking/redirecting).
+// to turn them off (kill switch — use it if ads ever start hijacking/redirecting).
 //
-// SECURITY: ad creatives are untrusted. Every ad runs inside a SANDBOXED iframe
-// (see SANDBOX below) so a malicious ad CANNOT redirect the top page. We grant
-// `allow-scripts` (ads need JS) and `allow-popups`/`allow-popups-to-escape-sandbox`
-// (a *clicked* ad may open the advertiser in a NEW tab) — but deliberately NOT
-// `allow-top-navigation*` (forced full-page redirects) and NOT `allow-same-origin`
-// (so the framed ad gets an opaque origin and can't reach window.top at all).
+// Only the redirect-causing formats are excluded: Popunder + Social Bar are
+// permanently removed (they hijack clicks → random sites). Banners + the native
+// banner are kept.
 //
-// Popunder + Social Bar formats are permanently removed (they hijack clicks).
+// SECURITY (banners): iframe ads run with a sandbox that grants `allow-scripts`,
+// `allow-same-origin` (Adsterra needs this to fill), `allow-popups` +
+// `allow-popups-to-escape-sandbox` (a clicked ad opens the advertiser in a new
+// tab), and `allow-top-navigation-by-user-activation` (a click MAY navigate).
+// It deliberately omits plain `allow-top-navigation`, so an ad CANNOT redirect
+// the whole page on its own without a user click.
 const ADS_ENABLED = process.env.NEXT_PUBLIC_ADS_ENABLED !== 'false';
-const SANDBOX = 'allow-scripts allow-popups allow-popups-to-escape-sandbox';
+const SANDBOX = 'allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation';
+
+// Native Banner — an in-page Adsterra unit (content-grid style). Runs its script
+// in the page context (can't be sandboxed); kept because it's not a redirect
+// format. If forced redirects ever recur AFTER confirming popunder/social-bar are
+// gone, this is the next thing to disable.
+export function AdsterraNativeBanner({ className = '' }: { className?: string }) {
+  if (!ADS_ENABLED) return null;
+  return (
+    <div className={`max-w-6xl mx-auto px-4 my-6 ${className}`}>
+      <Script
+        id="adsterra-native-banner"
+        strategy="afterInteractive"
+        data-cfasync="false"
+        src="https://pl29657550.effectivecpmnetwork.com/ef24112600981c7db083eb681fee8618/invoke.js"
+      />
+      <div id="container-ef24112600981c7db083eb681fee8618" />
+    </div>
+  );
+}
 
 // iframe Banners (highperformanceformat.com). These set a GLOBAL `atOptions` and
 // then load invoke.js which reads it — so two on the same page would clobber
