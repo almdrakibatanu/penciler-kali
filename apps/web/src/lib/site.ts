@@ -17,8 +17,8 @@ export const SOCIAL = {
   youtube: 'https://www.youtube.com/@AMRWorld-gd2sl',
 };
 
-// Byline used on every article (a desk byline — we have no per-author data).
-export const AUTHOR_NAME = 'PencilerKali ডেস্ক';
+// Byline used on every article.
+export const AUTHOR_NAME = 'নিজস্ব প্রতিবেদক';
 
 export const CATEGORY_LABEL: Record<string, string> = {
   bangladesh: 'বাংলাদেশ',
