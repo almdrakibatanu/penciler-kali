@@ -14,10 +14,15 @@ export const dynamic = 'force-dynamic';
 export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
   const label = LABEL[params.slug];
   if (!label) return {};
+  // Keep an empty category out of the index — a "no articles yet" page reads as
+  // thin/under-construction. Re-evaluated per request, so it self-heals once the
+  // category has content.
+  const { items } = await listArticles({ category: params.slug, limit: 1 });
   return {
     title: `${label} সংবাদ`,
     description: `সর্বশেষ ${label} সংবাদ — PencilerKali.com`,
     alternates: { canonical: `/c/${params.slug}` },
+    robots: items.length === 0 ? { index: false, follow: true } : undefined,
   };
 }
 

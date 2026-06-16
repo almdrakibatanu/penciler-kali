@@ -121,6 +121,7 @@ gtag('config', '${GA_ID}');`}
                 <li><Link href="/about" className="hover:text-brand-600">About Us</Link></li>
                 <li><Link href="/editorial-policy" className="hover:text-brand-600">Editorial Policy</Link></li>
                 <li><Link href="/privacy" className="hover:text-brand-600">Privacy Policy</Link></li>
+                <li><Link href="/terms" className="hover:text-brand-600">Terms &amp; Disclaimer</Link></li>
                 <li><Link href="/contact" className="hover:text-brand-600">Contact Us</Link></li>
               </ul>
             </div>

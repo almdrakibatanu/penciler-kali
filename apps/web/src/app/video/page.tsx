@@ -1,7 +1,12 @@
+import type { Metadata } from 'next';
 import { listVideos } from '@/lib/api';
 import { Ads } from '@/components/Ads';
 
 export const revalidate = 60;
+
+// Videos are paused, so this page is usually empty — keep it out of the index so
+// search engines (and AdSense review) don't see a thin "no videos yet" page.
+export const metadata: Metadata = { robots: { index: false, follow: true } };
 
 export default async function VideoPage() {
   const { items } = await listVideos();
