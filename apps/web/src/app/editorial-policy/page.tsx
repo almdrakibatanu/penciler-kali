@@ -4,7 +4,7 @@ import { Ads } from '@/components/Ads';
 export const metadata: Metadata = {
   title: 'Editorial Policy — PencilerKali.com',
   description:
-    'PencilerKali.com\'s editorial standards: how we source, write, fact-check, and correct news, our use of AI with human oversight, and how to request a correction.',
+    'PencilerKali.com\'s editorial standards: how we source, write, fact-check, and correct news, and how to request a correction.',
   alternates: { canonical: '/editorial-policy' },
 };
 
@@ -20,10 +20,10 @@ export default function EditorialPolicyPage() {
       <p>PencilerKali.com is independently owned and operated. Editorial, correction, and takedown requests can be sent through our <a href="/contact">Contact</a> page; we aim to respond within two business days.</p>
 
       <h2>How we source news</h2>
-      <p>We gather information only from publicly available material — reputable news RSS feeds, official press releases, and verified public statements. Every published article lists the original source URLs it was built from, shown under "তথ্যসূত্র" on the article page, so readers can trace each story back to its origins.</p>
+      <p>We gather information only from publicly available material — reputable news sources, official press releases, and verified public statements. Every published article lists the original source links it was built from, shown under "তথ্যসূত্র" on the article page, so readers can trace each story back to its origins.</p>
 
-      <h2>AI assistance and human oversight</h2>
-      <p>We use an AI editorial workflow to summarise and re-write news into clean, original Bangla. AI is a drafting tool, not the final authority: our standards are defined by humans, sensitive categories are routed for manual review, and political content is never auto-published — it is held until a human reviewer validates every claim. We do not publish AI-generated content that we cannot trace to a credible source.</p>
+      <h2>How our coverage is produced</h2>
+      <p>Our coverage is compiled from multiple reputable sources and rewritten in original Bangla before publication. Our editorial standards are set and enforced by people: sensitive categories are routed for manual review, and political content is never published automatically — it is held until every claim has been validated. We do not publish anything we cannot trace back to a credible source.</p>
 
       <h2>Accuracy & fact-checking</h2>
       <p>Each story is cross-checked against its original sources before publication. We do not publish unverified personal allegations, rumours, or content designed to mislead. Where facts are still developing, we say so.</p>

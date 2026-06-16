@@ -42,7 +42,7 @@ export default async function HomePage() {
         </section>
       ) : (
         <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-lg p-6">
-          কোনো প্রবন্ধ পাওয়া যায়নি। `npm run seed` চালান, এরপর `npm run -w @pk/api cli collect` দিয়ে সংবাদ সংগ্রহ শুরু করুন।
+          এই মুহূর্তে কোনো সংবাদ পাওয়া যায়নি। শীঘ্রই নতুন সংবাদ প্রকাশিত হবে — কিছুক্ষণ পর আবার দেখুন।
         </div>
       )}
 

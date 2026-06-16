@@ -3,7 +3,7 @@ import { Ads } from '@/components/Ads';
 
 export const metadata: Metadata = {
   title: 'About Us — PencilerKali.com',
-  description: 'Learn about PencilerKali.com, an AI-powered Bangladeshi news platform delivering Bangladesh, international, sports, entertainment and Islamic news in clean Bangla, 24/7.',
+  description: 'About PencilerKali.com — an independent Bangla news platform covering Bangladesh, international affairs, sports, entertainment and Islamic topics, updated 24/7.',
 };
 
 export default function AboutPage() {
@@ -11,13 +11,13 @@ export default function AboutPage() {
     <div className="max-w-3xl mx-auto px-4 py-10 prose-bn">
       <h1 className="font-head font-bold text-3xl mb-4">About PencilerKali.com</h1>
 
-      <p>PencilerKali.com is an independent, AI-assisted Bangla news platform serving readers in Bangladesh and the global Bangladeshi diaspora. Our mission is to give every Bangla-speaking reader fast, accurate, well-written news on the topics that matter to their daily life — coverage of Bangladesh, international affairs, sports, entertainment, and Islamic content — without paywalls and without political agitation.</p>
+      <p>PencilerKali.com is an independent Bangla news platform serving readers in Bangladesh and the global Bangladeshi diaspora. Our mission is to give every Bangla-speaking reader fast, accurate, well-written news on the topics that matter to their daily life — coverage of Bangladesh, international affairs, sports, entertainment, and Islamic content — without paywalls and without political agitation.</p>
 
       <h2>Our editorial approach</h2>
-      <p>Every story published on PencilerKali.com is synthesised from multiple reputable news sources by a senior-editor-trained AI workflow, and then quality-checked before going live. We follow a strict editorial policy: no plagiarism, no hate speech, no incitement, no unverified personal allegations. For political topics, our reviewers personally validate every claim before publication; in their absence, stories are held for review.</p>
+      <p>Every story published on PencilerKali.com is compiled from multiple reputable news sources and rewritten in original Bangla, then checked against those sources before going live. We follow a strict editorial policy: no plagiarism, no hate speech, no incitement, no unverified personal allegations. For political topics, every claim is validated before publication; otherwise the story is held for review.</p>
 
       <h2>How we work</h2>
-      <p>Our system collects publicly available news from RSS feeds, official press releases, and verified public social media posts. Each story is then re-written in clean Bangla by our editorial AI, fact-checked against the original sources, and credited transparently — every article on the site includes a full list of source URLs.</p>
+      <p>We monitor publicly available news from reputable news sources, official press releases, and verified public statements. Each story is rewritten in clean, original Bangla, checked against the original reporting, and credited transparently — every article includes a full list of its source links.</p>
 
       <h2>Coverage areas</h2>
       <ul>
@@ -31,7 +31,6 @@ export default function AboutPage() {
       <h2>Contact</h2>
       <p>For corrections, takedown requests, partnerships, or advertising inquiries, please reach us through the <a href="/contact">Contact</a> page or by email. We aim to respond within two business days.</p>
 
-      <p className="text-sm text-ink-500 mt-8">Some profile details on this page are placeholders during our public launch and will be updated as soon as our editorial team finalises the published version.</p>
       <Ads />
     </div>
   );

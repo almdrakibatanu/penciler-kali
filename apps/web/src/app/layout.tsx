@@ -11,7 +11,7 @@ import { SITE_URL, SITE_NAME, SITE_DESC, LOGO_URL, SOCIAL } from '@/lib/site';
 const GA_ID = process.env.NEXT_PUBLIC_GA_ID;
 
 export const metadata: Metadata = {
-  title: { default: 'PencilerKali.com — বাংলাদেশের AI সংবাদ পোর্টাল', template: '%s — PencilerKali.com' },
+  title: { default: 'PencilerKali.com — বাংলাদেশের সর্বশেষ বাংলা সংবাদ', template: '%s — PencilerKali.com' },
   description: SITE_DESC,
   metadataBase: new URL(SITE_URL),
   openGraph: { siteName: SITE_NAME, locale: 'bn_BD', type: 'website' },
@@ -107,7 +107,7 @@ gtag('config', '${GA_ID}');`}
           <div className="max-w-6xl mx-auto px-4 py-8 grid md:grid-cols-4 gap-6 text-sm">
             <div>
               <div className="font-head font-bold text-lg mb-2">PencilerKali.com</div>
-              <p className="text-ink-500">বাংলাদেশের সম্পূর্ণ স্বয়ংক্রিয় AI সংবাদ প্ল্যাটফর্ম। ২৪/৭ আপডেট।</p>
+              <p className="text-ink-500">বাংলাদেশ, বিদেশ, খেলাধুলা, বিনোদন ও ইসলামিক সংবাদের নির্ভরযোগ্য বাংলা সংবাদমাধ্যম। ২৪/৭ আপডেট।</p>
             </div>
             <div>
               <div className="font-semibold mb-2">বিভাগ</div>
