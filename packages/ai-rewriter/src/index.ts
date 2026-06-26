@@ -95,7 +95,11 @@ const POLICY_BN = `\
 5. ইসলামিক category: fair-use summary; কোনো নির্দিষ্ট আলেম/বক্তার দাবি প্রচার নয় — explanation style।
 6. কোনো hate-speech, rumor, unverified ব্যক্তিগত অভিযোগ নয়। সন্দেহ হলে status="flagged"।
 7. SEO title ≤ 70 অক্ষর, description ≤ 160 অক্ষর; Facebook caption ১-২ লাইন + ৩ relevant hashtag।
-8. Hasnat Abdullah / Debidwar কেন্দ্রিক হলে tags-এ "hasnat-abdullah", "debidwar" যুক্ত করবে।`;
+8. Hasnat Abdullah / Debidwar কেন্দ্রিক হলে tags-এ "hasnat-abdullah", "debidwar" যুক্ত করবে।
+9. Category নির্ধারণে বিষয়বস্তু (subject matter) সবসময় ভৌগোলিক অবস্থানের চেয়ে অগ্রাধিকার পাবে:
+   • বিনোদন/শোবিজ/সেলিব্রিটি/চলচ্চিত্র/সংগীত/OTT/টিভি সিরিজ — দেশ যাই হোক — category="binodon"
+   • ক্রিকেট/ফুটবল/IPL/BPL/PSL/BBL/অলিম্পিক/যেকোনো খেলাধুলা — দেশ যাই হোক — category="kheladhula"
+   • category="bidesh" শুধুমাত্র আন্তর্জাতিক রাজনীতি, কূটনীতি, যুদ্ধ, দুর্যোগ, অর্থনীতি — অর্থাৎ বিনোদন বা খেলাধুলা নয় এমন বিদেশি সংবাদের জন্য।`;
 
 interface RewriteInput { clusterId: string; }
 export interface RewriteOutput {
