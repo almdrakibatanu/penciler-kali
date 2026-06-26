@@ -8,6 +8,13 @@ import { uploadVideo } from '@pk/publisher-yt';
 import { pingIndexNow, articleUrl } from './seo-ping.js';
 import { sendPushToAll } from './push.js';
 
+// Bangladesh is UTC+6. Returns true during 01:00–04:59 BD — quiet window where
+// nothing new is published to the site or social channels.
+function isBdQuietHours(): boolean {
+  const bdHour = (new Date().getUTCHours() + 6) % 24;
+  return bdHour >= 1 && bdHour < 5;
+}
+
 // ----------------------------------------------------------------------------
 // One stage = one box in the architecture diagram. Each is idempotent and
 // safe to re-run; the scheduler chains them every N minutes.
@@ -150,6 +157,10 @@ export async function stageRewrite(
   // Small gap between calls so a burst doesn't trip the per-minute rate limit.
   const delayMs = Number(process.env.REWRITE_DELAY_MS ?? 4000);
 
+  // Minimum gap between auto-publishing consecutive articles (default 10 min).
+  const minGapMs = Number(process.env.PUBLISH_MIN_GAP_MS ?? 10 * 60 * 1000);
+  let lastPublishMs = (db.prepare(`SELECT MAX(published_at) ts FROM articles WHERE status='published'`).get() as { ts: number | null })?.ts ?? 0;
+
   let articles = 0, flagged = 0, skipped = 0, quotaHit = false;
   const published: Array<{ title: string; url: string }> = [];
   for (const { cluster_id } of pending) {
@@ -158,9 +169,13 @@ export async function stageRewrite(
       const id = persistArticle(out, cluster_id);
       articles++; if (out.status === 'flagged') flagged++;
       // auto-publish clean drafts (not flagged) so the homepage gets fresh data
-      if (out.status === 'draft') {
-        db.prepare(`UPDATE articles SET status='published', published_at=? WHERE id=?`).run(Date.now(), id);
-        published.push({ title: out.title, url: articleUrl(out.slug) }); // for IndexNow + push
+      // Auto-publish only outside the 01:00–04:59 BD quiet window and only when
+      // at least PUBLISH_MIN_GAP_MS has elapsed since the last publication.
+      if (out.status === 'draft' && !isBdQuietHours() && Date.now() - lastPublishMs >= minGapMs) {
+        const publishNow = Date.now();
+        db.prepare(`UPDATE articles SET status='published', published_at=? WHERE id=?`).run(publishNow, id);
+        lastPublishMs = publishNow;
+        published.push({ title: out.title, url: articleUrl(out.slug) });
       }
       // Build the thumbnail immediately so every new article has an image right
       // away. Use the cluster's image if present, else pull the source article's
@@ -270,6 +285,7 @@ export async function stageVideo(maxArticles = 2): Promise<{ rendered: number }>
 }
 
 export async function stagePublishFb(max = 5): Promise<{ posted: number }> {
+  if (isBdQuietHours()) return { posted: 0 };
   getDb();
   const rows = rawDb().prepare(`
     SELECT a.id, a.slug, a.title, a.fb_caption
@@ -293,6 +309,7 @@ export async function stagePublishFb(max = 5): Promise<{ posted: number }> {
 }
 
 export async function stagePublishYt(max = 2): Promise<{ uploaded: number }> {
+  if (isBdQuietHours()) return { uploaded: 0 };
   getDb();
   const rows = rawDb().prepare(`
     SELECT v.id, v.title, v.video_file, v.category, a.summary, a.body

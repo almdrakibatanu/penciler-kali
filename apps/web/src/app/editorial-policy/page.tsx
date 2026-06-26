@@ -20,7 +20,7 @@ export default function EditorialPolicyPage() {
       <p>PencilerKali.com is independently owned and operated. Editorial, correction, and takedown requests can be sent through our <a href="/contact">Contact</a> page; we aim to respond within two business days.</p>
 
       <h2>How we source news</h2>
-      <p>We gather information only from publicly available material — reputable news sources, official press releases, and verified public statements. Every published article lists the original source links it was built from, shown under "তথ্যসূত্র" on the article page, so readers can trace each story back to its origins.</p>
+      <p>We gather information only from publicly available material — reputable news sources, official press releases, and verified public statements. Every published article is compiled from multiple reputable sources, which we verify before publication.</p>
 
       <h2>How our coverage is produced</h2>
       <p>Our coverage is compiled from multiple reputable sources and rewritten in original Bangla before publication. Our editorial standards are set and enforced by people: sensitive categories are routed for manual review, and political content is never published automatically — it is held until every claim has been validated. We do not publish anything we cannot trace back to a credible source.</p>

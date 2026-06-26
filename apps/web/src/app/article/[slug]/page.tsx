@@ -40,21 +40,10 @@ export async function generateMetadata({ params }: { params: { slug: string } })
   };
 }
 
-function parseSources(raw: string | null | undefined): string[] {
-  if (!raw) return [];
-  try {
-    const v = JSON.parse(raw);
-    return Array.isArray(v) ? v.filter((u): u is string => typeof u === 'string') : [];
-  } catch {
-    return [];
-  }
-}
-
 export default async function ArticlePage({ params }: { params: { slug: string } }) {
   const a = await getArticle(params.slug);
   if (!a) notFound();
   const ts = a.published_at ?? a.created_at;
-  const sources = parseSources(a.source_urls);
   const catLabel = CAT_LABEL[a.category] ?? a.category;
   const url = `${SITE_URL}/article/${params.slug}`;
   const img = a.og_image_url ?? a.hero_image_url ?? a.thumbnail_url ?? undefined;
@@ -116,25 +105,10 @@ export default async function ArticlePage({ params }: { params: { slug: string }
       )}
       <ShareButtons url={url} title={a.title} />
       <div className="prose-bn text-[1.05rem]">
-        {(a.body ?? '').split(/\n\n+/).map((p, i, arr) => (
-          <div key={i}>
-            <p>{p}</p>
-            {/* one in-article rectangle, after the 3rd paragraph (only if the article is long enough) */}
-            {i === 2 && arr.length > 4 && <InlineAd size="300x250" category={a.category} />}
-          </div>
+        {(a.body ?? '').split(/\n\n+/).map((p, i) => (
+          <div key={i}><p>{p}</p></div>
         ))}
       </div>
-      {sources.length > 0 && (
-        <details className="mt-8 border-t border-slate-200 pt-4" open>
-          <summary className="cursor-pointer text-sm font-semibold text-ink-700">তথ্যসূত্র</summary>
-          <ul className="mt-2 text-sm space-y-1">
-            {sources.map((u, i) => (
-              <li key={i}><a href={u} target="_blank" rel="noopener" className="text-brand-600 hover:underline break-all">{u}</a></li>
-            ))}
-          </ul>
-        </details>
-      )}
-
       {related.length > 0 && (
         <section className="mt-12">
           <h2 className="font-head font-bold text-2xl mb-4">আরো {catLabel} সংবাদ</h2>

@@ -17,7 +17,7 @@ export default function AboutPage() {
       <p>Every story published on PencilerKali.com is compiled from multiple reputable news sources and rewritten in original Bangla, then checked against those sources before going live. We follow a strict editorial policy: no plagiarism, no hate speech, no incitement, no unverified personal allegations. For political topics, every claim is validated before publication; otherwise the story is held for review.</p>
 
       <h2>How we work</h2>
-      <p>We monitor publicly available news from reputable news sources, official press releases, and verified public statements. Each story is rewritten in clean, original Bangla, checked against the original reporting, and credited transparently — every article includes a full list of its source links.</p>
+      <p>We monitor publicly available news from reputable news sources, official press releases, and verified public statements. Each story is rewritten in clean, original Bangla and checked against the original reporting.</p>
 
       <h2>Coverage areas</h2>
       <ul>
