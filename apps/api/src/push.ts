@@ -8,10 +8,62 @@ import { rawDb } from '@pk/db';
 // Disabled until VAPID keys are set, like every other integration here. Generate
 // a keypair once with:  node -e "console.log(require('web-push').generateVAPIDKeys())"
 // then put VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY in .env.
+//
+// Rate limiting: PUSH_DAILY_CAP (default 8) caps total notifications per BD calendar
+// day; PUSH_MIN_GAP_MS (default 30 min) enforces a minimum gap between any two sends.
+// Both are tracked in app_meta so they survive restarts. Without this Chrome's
+// Safe Browsing flags the site as abusive when the cron fires many articles per hour.
 
 const PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY ?? '';
 const PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY ?? '';
 const SUBJECT = process.env.VAPID_SUBJECT ?? 'mailto:contact@pencilerkali.com';
+
+const PUSH_DAILY_CAP = Number(process.env.PUSH_DAILY_CAP ?? 8);
+const PUSH_MIN_GAP_MS = Number(process.env.PUSH_MIN_GAP_MS ?? 30 * 60 * 1000);
+
+// BD calendar date string for the daily cap key.
+function bdDateKey(): string {
+  const bdMs = Date.now() + 6 * 60 * 60 * 1000;
+  const d = new Date(bdMs);
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+}
+
+function readMeta(key: string): string | null {
+  try {
+    const row = rawDb().prepare(`SELECT value FROM app_meta WHERE key=?`).get(key) as { value: string } | undefined;
+    return row?.value ?? null;
+  } catch { return null; }
+}
+
+function writeMeta(key: string, value: string): void {
+  try {
+    rawDb().prepare(
+      `INSERT INTO app_meta (key, value, updated_at) VALUES (?, ?, ?)
+       ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at`,
+    ).run(key, value, Date.now());
+  } catch { /* never let tracking break a send */ }
+}
+
+function canSendPush(): boolean {
+  const count = Number(readMeta(`push_daily:${bdDateKey()}`) ?? '0');
+  if (count >= PUSH_DAILY_CAP) {
+    console.log(`[push] daily cap ${PUSH_DAILY_CAP} reached — skipping`);
+    return false;
+  }
+  const lastAt = Number(readMeta('push_last_at') ?? '0');
+  const wait = PUSH_MIN_GAP_MS - (Date.now() - lastAt);
+  if (wait > 0) {
+    console.log(`[push] min-gap not met — ${Math.ceil(wait / 60000)}m remaining`);
+    return false;
+  }
+  return true;
+}
+
+function recordPushSent(): void {
+  const dateKey = `push_daily:${bdDateKey()}`;
+  writeMeta(dateKey, String(Number(readMeta(dateKey) ?? '0') + 1));
+  writeMeta('push_last_at', String(Date.now()));
+}
 
 let configured = false;
 export function pushEnabled(): boolean {
@@ -52,8 +104,10 @@ interface PushPayload {
 
 // Send one notification to every subscriber. Dead subscriptions (404/410) are
 // pruned so the table self-cleans. Never throws — failures are logged.
+// Silently no-ops if the daily cap or minimum gap has been reached.
 export async function sendPushToAll(payload: PushPayload): Promise<{ sent: number; pruned: number }> {
   if (!pushEnabled()) return { sent: 0, pruned: 0 };
+  if (!canSendPush()) return { sent: 0, pruned: 0 };
   const subs = rawDb()
     .prepare(`SELECT endpoint, p256dh, auth FROM push_subscriptions`)
     .all() as Array<{ endpoint: string; p256dh: string; auth: string }>;
@@ -80,5 +134,6 @@ export async function sendPushToAll(payload: PushPayload): Promise<{ sent: numbe
       }
     }),
   );
+  if (sent > 0) recordPushSent();
   return { sent, pruned };
 }
