@@ -75,7 +75,8 @@ gtag('config', '${GA_ID}');`}
         <header className="border-b border-slate-200 bg-white sticky top-0 z-30">
           <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-4">
             <Link href="/" className="flex items-center gap-2 shrink-0">
-              <span className="grid place-items-center w-9 h-9 rounded-lg bg-brand-600 text-white font-head font-bold">পক</span>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/brand/logo.jpg" alt="PencilerKali.com" className="h-9 w-auto rounded" />
               <span className="font-head font-bold text-xl tracking-tight">PencilerKali<span className="text-brand-600">.com</span></span>
             </Link>
             <nav className="hidden md:flex items-center gap-1 ml-2 flex-1 overflow-x-auto">
